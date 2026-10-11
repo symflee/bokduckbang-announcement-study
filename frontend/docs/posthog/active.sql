@@ -14,6 +14,7 @@ FROM (
  WHERE timestamp >= addDays(toStartOfDay(toTimeZone(now(), 'Asia/Seoul')), -29)
   AND timestamp < now()
   AND properties.environment = 'dev'
+  AND properties.identity_basis = 'browser_v1'
   AND event IN ('page_view', 'view_complex', 'view_announcement')
 ) AS data
 CROSS JOIN (SELECT arrayJoin([1, 7, 30]) AS days) AS period
