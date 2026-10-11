@@ -168,7 +168,7 @@ class GuestNotificationSubscriptionIntegrationTest {
 
     private PrivacyChoiceRequest choice(String contextId, long revision, String action) {
         return new PrivacyChoiceRequest(UUID.randomUUID().toString(), null, contextId, revision, action,
-                "analytics-2026-10-09-v2", "analytics-scope-2", "SETTINGS");
+                "analytics-2026-10-11-v1", "analytics-scope-3", "SETTINGS");
     }
 
     private Map<String, List<String>> snapshot() {

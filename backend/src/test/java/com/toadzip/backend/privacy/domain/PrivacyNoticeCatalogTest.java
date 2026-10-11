@@ -27,10 +27,26 @@ class PrivacyNoticeCatalogTest {
             assertTrue(document.content().contains("90일"));
         }
         assertEquals("privacy-scope-1", catalog.current("PRIVACY_POLICY").scopeVersion());
-        assertEquals("analytics-scope-2", catalog.requiredAnalyticsScope());
-        assertEquals("analytics-2026-10-09-v2", catalog.currentVersion("ANALYTICS_NOTICE"));
+        assertEquals("privacy-2026-10-11-v1", catalog.currentVersion("PRIVACY_POLICY"));
+        assertEquals("analytics-scope-3", catalog.requiredAnalyticsScope());
+        assertEquals("analytics-2026-10-11-v1", catalog.currentVersion("ANALYTICS_NOTICE"));
         assertEquals("analytics-scope-1", catalog.find("ANALYTICS_NOTICE", "analytics-2026-10-09-v1").scopeVersion());
+        assertEquals("analytics-scope-2", catalog.find("ANALYTICS_NOTICE", "analytics-2026-10-09-v2").scopeVersion());
         assertThrows(PrivacyException.class, () -> catalog.find("PRIVACY_POLICY", "unknown"));
+    }
+
+    @Test
+    void 재동의_범위를_추가해도_과거_범위의_최초_무효화_시점은_연장하지_않는다() {
+        PrivacyNoticeCatalog catalog = new PrivacyNoticeCatalog();
+        Instant previousInvalidation = Instant.parse("2026-10-09T00:00:01Z");
+        Instant currentInvalidation = Instant.parse("2026-10-10T15:00:00Z");
+
+        assertEquals(previousInvalidation, catalog.scopeInvalidatedAt("analytics-scope-1"));
+        assertEquals(currentInvalidation, catalog.scopeInvalidatedAt("analytics-scope-2"));
+        assertEquals(currentInvalidation, catalog.analyticsScopeEffectiveAt());
+        assertEquals(2, catalog.scopeInvalidations().size());
+        assertEquals(previousInvalidation, catalog.scopeInvalidations().get("analytics-scope-1"));
+        assertEquals(currentInvalidation, catalog.scopeInvalidations().get("analytics-scope-2"));
     }
 
     @Test

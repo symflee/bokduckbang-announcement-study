@@ -40,6 +40,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -67,9 +68,9 @@ import tools.jackson.databind.ObjectMapper;
 class AnalyticsCollectionIntegrationTest {
 
     private static final long MEMBER = 841001L;
-    private static final Instant NOW = Instant.parse("2026-10-09T09:00:00Z");
-    private static final String NOTICE = "analytics-2026-10-09-v2";
-    private static final String SCOPE = "analytics-scope-2";
+    private static final Instant NOW = Instant.parse("2026-10-11T09:00:00Z");
+    private static final String NOTICE = "analytics-2026-10-11-v1";
+    private static final String SCOPE = "analytics-scope-3";
     private static final String ENDPOINT = "/api/v1/notification-interest-events";
     @Autowired private MockMvc mvc;
     @Autowired private JdbcTemplate jdbc;
@@ -156,13 +157,19 @@ class AnalyticsCollectionIntegrationTest {
         assertEquals(0, stored(withdrawnRequest));
     }
 
-    @Test
-    void 과거_익명_안내의_허용은_최신_안내에_다시_동의해야_수집할_수_있다() throws Exception {
-        seedOldScope();
+    @ParameterizedTest
+    @CsvSource({"analytics-2026-10-09-v1,analytics-scope-1", "analytics-2026-10-09-v2,analytics-scope-2"})
+    void 과거_안내의_허용은_최신_안내에_다시_동의해야_수집할_수_있다(String notice, String scope) throws Exception {
+        seedOldScope(notice, scope);
         assertEquals("RECONSENT_REQUIRED", choices.context(MEMBER, null).consent().effectiveStatus());
         assertFalse(choices.context(MEMBER, null).collectionAllowed());
+        NotificationInterestRequest blocked = observation(NotificationEventType.CLICKED);
+        mvc.perform(post(ENDPOINT).with(user(Long.toString(MEMBER)).roles("USER")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content(mapper.writeValueAsString(blocked)))
+                .andExpect(status().isForbidden());
+        assertEquals(0, stored(blocked));
         PrivacyChoiceRequest stale = new PrivacyChoiceRequest(UUID.randomUUID().toString(), Long.toString(MEMBER),
-                null, 1L, "GRANT", "analytics-2026-10-09-v1", "analytics-scope-1", "SETTINGS");
+                null, 1L, "GRANT", notice, scope, "SETTINGS");
         mvc.perform(post("/api/v1/privacy/analytics/me").with(user(Long.toString(MEMBER)).roles("USER"))
                         .with(csrf()).contentType(MediaType.APPLICATION_JSON).content(mapper.writeValueAsString(stale)))
                 .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("PRIVACY_NOTICE_CHANGED"));
@@ -174,6 +181,36 @@ class AnalyticsCollectionIntegrationTest {
         assertEquals(NOTICE, renewed.current().consent().noticeVersion());
         NotificationInterestRequest request = observation(NotificationEventType.CLICKED);
         assertEquals(NotificationInterestOutcome.OBSERVED, observations.record(request, MEMBER, null).outcome());
+        assertEquals(1, stored(request));
+    }
+
+    @Test
+    void 메모리_식별자_안내에_동의한_비회원도_브라우저_저장에_다시_동의해야_수집한다() throws Exception {
+        var guest = choices.prepareGuest(null);
+        String contextId = guest.context().subject().contextId();
+        jdbc.update("""
+                UPDATE privacy_analytics_consents SET decision = 'GRANTED', revision = 1,
+                    notice_version = 'analytics-2026-10-09-v2', scope_version = 'analytics-scope-2',
+                    decided_at = ?, expires_at = ? WHERE id = ?
+                """, Timestamp.from(NOW), Timestamp.from(NOW.plus(Duration.ofDays(180))), UUID.fromString(contextId));
+        assertEquals("RECONSENT_REQUIRED", choices.context(null, guest.token()).consent().effectiveStatus());
+        assertFalse(choices.context(null, guest.token()).collectionAllowed());
+        Cookie cookie = new Cookie("toadzip-privacy-local", guest.token());
+        NotificationInterestRequest blocked = observation(NotificationEventType.CLICKED);
+        mvc.perform(post(ENDPOINT).with(csrf()).cookie(cookie).contentType(MediaType.APPLICATION_JSON)
+                        .content(mapper.writeValueAsString(blocked)))
+                .andExpect(status().isForbidden());
+        assertEquals(0, stored(blocked));
+
+        var renewed = choices.chooseGuest(guest.token(), new PrivacyChoiceRequest(UUID.randomUUID().toString(),
+                null, contextId, 1L, "GRANT", NOTICE, SCOPE, "SETTINGS"));
+        assertTrue(renewed.current().collectionAllowed());
+        assertEquals(SCOPE, renewed.current().consent().scopeVersion());
+        assertEquals(NOTICE, renewed.current().consent().noticeVersion());
+        NotificationInterestRequest request = observation(NotificationEventType.CLICKED);
+        mvc.perform(post(ENDPOINT).with(csrf()).cookie(cookie).contentType(MediaType.APPLICATION_JSON)
+                        .content(mapper.writeValueAsString(request)))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.outcome").value("OBSERVED"));
         assertEquals(1, stored(request));
     }
 
@@ -269,17 +306,18 @@ class AnalyticsCollectionIntegrationTest {
                 choices.chooseMember(MEMBER, memberChoice(0, "GRANT"));
                 clock.set(NOW.plus(Duration.ofDays(180)));
             }
-            case "OLD_SCOPE" -> seedOldScope();
+            case "OLD_SCOPE" -> seedOldScope("analytics-2026-10-09-v2", "analytics-scope-2");
             default -> throw new IllegalArgumentException("Unexpected consent fixture");
         }
     }
 
-    private void seedOldScope() {
+    private void seedOldScope(String notice, String scope) {
         jdbc.update("""
                 INSERT INTO privacy_analytics_consents(id,user_id,decision,revision,notice_version,scope_version,
                     decided_at,expires_at,created_at,updated_at)
-                VALUES (?,?,'GRANTED',1,'analytics-2026-10-09-v1','analytics-scope-1',?,?,?,?)
-                """, UUID.randomUUID(), MEMBER, Timestamp.from(NOW), Timestamp.from(NOW.plus(Duration.ofDays(180))),
+                VALUES (?,?,'GRANTED',1,?,?,?,?,?,?)
+                """, UUID.randomUUID(), MEMBER, notice, scope, Timestamp.from(NOW),
+                Timestamp.from(NOW.plus(Duration.ofDays(180))),
                 Timestamp.from(NOW), Timestamp.from(NOW));
     }
 
