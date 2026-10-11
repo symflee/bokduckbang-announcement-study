@@ -25,14 +25,14 @@ export function useProductDetailAnalytics({ detailLocation, readyComplexId, read
   const [resetVersion, setResetVersion] = useState(0)
 
   useEffect(() => consentStore.onStop(reason => {
-    if (reason !== 'reset') return
+    if (reason === 'pause') return
     if (visit.current) {
       visit.current.id = createAnalyticsId()
       visit.current.sent = false
     }
     pending.current = null
-    // A new grant can follow reset before React observes allowed=false.
-    // Remeasure only the current visible detail in the new consent lifetime.
+    // Reset and authentication changes discard queued views. Reobserve the
+    // current detail even when new permission precedes an allowed=false render.
     setResetVersion(version => version + 1)
   }), [])
 

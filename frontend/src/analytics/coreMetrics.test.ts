@@ -79,6 +79,8 @@ it('retries an aborted core event with the same event ID, uuid and occurrence ti
   expect(second.uuid).toBe(first.uuid)
   expect(second.properties.event_id).toBe(first.properties.event_id)
   expect(second.timestamp).toBe(first.timestamp)
+  expect(second.properties.distinct_id).toBe(first.properties.distinct_id)
+  expect(second.properties.$device_id).toBe(first.properties.$device_id)
   expect(second.properties.occurred_at).toBe('2026-10-10T12:00:00Z')
   expect(sessionStorage.getItem('toadzip.posthog.sent-actions.v1')).toContain('receipt:1')
 })
@@ -128,6 +130,23 @@ it.each(['reset', 'context-change'] as const)('drops queued core events and inva
   expect(completion({ target_type: 'COMPLEX', target_id: '17' })).toBe(false)
   await settled()
   expect(network).not.toHaveBeenCalled()
+})
+
+it('keeps the browser identity through authentication changes but replaces it after withdrawal', async () => {
+  const analytics = await import('./productAnalytics')
+  analytics.captureProductEvent('view_complex', { complex_id: '17' })
+  await settled()
+  const original = payload(0).properties.distinct_id
+  stop('context-change'); allow()
+  analytics.captureProductEvent('view_announcement', { announcement_id: '22' })
+  await settled()
+  expect(payload(1).properties.distinct_id).toBe(original)
+  expect(payload(1).properties.$is_identified).toBe(false)
+  expect(payload(1).properties.$process_person_profile).toBe(false)
+  stop('reset'); allow()
+  analytics.captureProductEvent('view_complex', { complex_id: '17' })
+  await settled()
+  expect(payload(2).properties.distinct_id).not.toBe(original)
 })
 
 it('bounds paused core retention to 100 events and expires both events and action permissions in 24 hours', async () => {

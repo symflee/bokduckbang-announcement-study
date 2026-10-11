@@ -41,11 +41,11 @@ function Probe({ location, ready }: { location: DetailLocationResult; ready: str
 const wrap = ({ children }: { children: React.ReactNode }) => <StrictMode><MemoryRouter>{children}</MemoryRouter></StrictMode>
 beforeEach(() => {
   consent.allowed = true
-  capture.mockClear()
+  capture.mockClear().mockImplementation(() => consent.allowed)
   vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue(rectangle)
   vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible')
 })
-afterEach(() => { cleanup(); consent.listeners.clear(); consent.stopListeners.clear(); document.querySelectorAll('[data-test-blocker]').forEach(node => node.remove()); vi.restoreAllMocks() })
+afterEach(() => { cleanup(); consent.listeners.clear(); consent.stopListeners.clear(); document.querySelectorAll('[data-test-blocker]').forEach(node => node.remove()); vi.restoreAllMocks(); vi.unstubAllEnvs(); vi.unstubAllGlobals() })
 
 function collected(name: string) {
   return capture.mock.calls.filter(([event], index) => event === name && capture.mock.results[index]?.value === true)
@@ -90,14 +90,17 @@ describe('제품 활성 상세 계측', () => {
     expect(collected('view_complex')).toHaveLength(0)
   })
 
-  it.each(['complex', 'announcement'] as const)('동의가 초기화되면 재동의 후 현재 %s 상세를 새 방문 ID로 한 번 수집한다', async kind => {
+  it.each([
+    ['reset', 'complex'], ['reset', 'announcement'],
+    ['context-change', 'complex'], ['context-change', 'announcement'],
+  ] as const)('%s 후 새 허용 상태에서 현재 %s 상세를 새 방문 ID로 한 번 수집한다', async (reason, kind) => {
     const location: DetailLocationResult = kind === 'complex'
       ? { kind, complexId: '12' } : { kind, announcementId: '12' }
     render(<Probe location={location} ready="12" />, { wrapper: wrap })
     await waitFor(() => expect(collected(`view_${kind}`)).toHaveLength(1))
     const first = collected(`view_${kind}`)[0]
 
-    await act(async () => notifyStop('reset'))
+    await act(async () => notifyStop(reason))
     expect(collected(`view_${kind}`)).toHaveLength(1)
     await setConsent(true)
     expect(collected(`view_${kind}`)).toHaveLength(2)
@@ -110,34 +113,74 @@ describe('제품 활성 상세 계측', () => {
     expect(collected(`view_${kind}`)).toHaveLength(2)
   })
 
-  it('초기화 직후 같은 작업 안에서 새 동의가 확인되어도 현재 상세를 새로 수집한다', async () => {
+  it.each(['reset', 'context-change'] as const)('%s 직후 같은 작업 안에서 새 허용 상태가 확인되어도 현재 상세를 새로 수집한다', async reason => {
     render(<Probe location={{ kind: 'complex', complexId: '12' }} ready="12" />, { wrapper: wrap })
     await waitFor(() => expect(collected('view_complex')).toHaveLength(1))
     await act(async () => {
-      notifyStop('reset')
+      notifyStop(reason)
       consent.allowed = true
       consent.listeners.forEach(listener => listener())
     })
     expect(collected('view_complex')).toHaveLength(2)
   })
 
-  it('동의 초기화 후 재동의 전에 닫은 상세는 다시 수집하지 않는다', async () => {
+  it.each(['reset', 'context-change'] as const)('%s 후 새 허용 상태 확인 전에 닫은 상세는 다시 수집하지 않는다', async reason => {
     const view = render(<Probe location={{ kind: 'complex', complexId: '12' }} ready="12" />, { wrapper: wrap })
     await waitFor(() => expect(collected('view_complex')).toHaveLength(1))
-    await act(async () => notifyStop('reset'))
+    await act(async () => notifyStop(reason))
     view.rerender(<Probe location={{ kind: 'none' }} ready={null} />)
     await setConsent(true)
     expect(collected('view_complex')).toHaveLength(1)
   })
 
-  it.each(['pause', 'context-change'] as const)('%s 후 허용이 복구되어도 같은 상세를 중복 수집하지 않는다', async reason => {
+  it('일시 중단 후 허용이 복구되어도 같은 상세를 중복 수집하지 않는다', async () => {
     render(<Probe location={{ kind: 'complex', complexId: '12' }} ready="12" />, { wrapper: wrap })
     await waitFor(() => expect(collected('view_complex')).toHaveLength(1))
     const firstVisit = collected('view_complex')[0]?.[1]?.detail_visit_id
-    await act(async () => notifyStop(reason))
+    await act(async () => notifyStop('pause'))
     await setConsent(true)
     expect(collected('view_complex')).toHaveLength(1)
     expect(document.querySelector<HTMLElement>('dialog.housing-detail-layer')?.dataset.detailVisitId).toBe(firstVisit)
+  })
+
+  it('실제 전송 대기 중 인증 전환으로 폐기된 상세는 새 허용 상태에서 다시 전송한다', async () => {
+    vi.stubEnv('VITE_POSTHOG_KEY', 'phc_testpublictoken')
+    vi.stubEnv('VITE_POSTHOG_HOST', 'https://us.i.posthog.com')
+    vi.stubEnv('VITE_ANALYTICS_ENV', 'dev')
+    vi.stubEnv('VITE_POSTHOG_LOCAL_ENABLED', 'true')
+    vi.stubEnv('MODE', 'development')
+    localStorage.clear(); sessionStorage.clear()
+    window.history.replaceState({}, '', '/')
+    let firstResponse: (response: Response) => void = () => { throw new Error('request missing') }
+    const network = vi.fn<typeof fetch>()
+      .mockImplementationOnce(() => new Promise(resolve => { firstResponse = resolve }))
+      .mockResolvedValue(new Response('{}', { status: 200 }))
+    vi.stubGlobal('fetch', network)
+    const analytics = await vi.importActual<typeof import('../../analytics/productAnalytics')>('../../analytics/productAnalytics')
+    capture.mockImplementation(analytics.captureProductEvent)
+    try {
+      render(<Probe location={{ kind: 'complex', complexId: '12' }} ready="12" />, { wrapper: wrap })
+      await waitFor(() => expect(network).toHaveBeenCalledOnce())
+      // capture=true means accepted into the real core queue, not HTTP acceptance.
+      expect(collected('view_complex')).toHaveLength(1)
+      expect(sessionStorage.getItem('toadzip.posthog.sent-actions.v1')).toBeNull()
+      const firstVisit = collected('view_complex')[0]?.[1]?.detail_visit_id
+      const signal = network.mock.calls[0]?.[1]?.signal
+      await act(async () => notifyStop('context-change'))
+      expect(signal?.aborted).toBe(true)
+      await act(async () => firstResponse(new Response('{}', { status: 200 })))
+      expect(sessionStorage.getItem('toadzip.posthog.sent-actions.v1')).toBeNull()
+
+      await setConsent(true)
+      await waitFor(() => expect(network).toHaveBeenCalledTimes(2))
+      expect(collected('view_complex')).toHaveLength(2)
+      expect(collected('view_complex')[1]?.[1]?.detail_visit_id).not.toBe(firstVisit)
+      await act(async () => window.dispatchEvent(new Event('resize')))
+      expect(network).toHaveBeenCalledTimes(2)
+    } finally {
+      cleanup()
+      notifyStop('reset')
+    }
   })
 
   it('로드 성공이 다른 팝업 뒤에 있으면 기다리고, 노출 후 재렌더와 반응형 재열기는 한 번만 센다', async () => {

@@ -22,6 +22,9 @@ const corePending = new Map<string, CoreEvent>()
 let corePermissionGeneration = 0
 let coreRetryTimer: ReturnType<typeof setTimeout> | undefined
 let instance: PostHog | undefined
+// Preserve this page's anonymous browser identity across temporary SDK restarts.
+// Durable identity across reloads requires the updated consent notice.
+let browserDistinctId: string | undefined
 let transport: ReturnType<typeof guardPostHogTransport> | undefined
 let generation = 0
 let loading: Promise<void> | undefined
@@ -200,8 +203,10 @@ function initialize(): void {
     transport = nextTransport
     instance = next
     let ready = false
+    browserDistinctId ??= createAnalyticsId()
     next.init(config.key, {
       ...productAnalyticsOptions(), api_host: config.host,
+      bootstrap: { distinctID: browserDistinctId, isIdentifiedID: false },
       loaded: () => {
         nextTransport.ready()
         if (current()) { next.opt_in_capturing({ captureEventName: false }); ready = true }
@@ -221,6 +226,7 @@ function initialize(): void {
 }
 
 function stopCollection(reason: 'pause' | 'reset' | 'context-change' = 'reset'): void {
+  if (reason === 'reset') browserDistinctId = undefined
   clearTimeout(coreRetryTimer)
   coreRetryTimer = undefined
   if (reason === 'pause') {
