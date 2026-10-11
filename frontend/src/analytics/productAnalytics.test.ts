@@ -30,6 +30,9 @@ beforeEach(() => {
   vi.stubEnv('VITE_ANALYTICS_ENV', 'dev')
   vi.stubEnv('VITE_POSTHOG_LOCAL_ENABLED', 'true')
   vi.stubEnv('MODE', 'development')
+  Object.defineProperty(navigator, 'locks', { configurable: true,
+    value: { request: vi.fn(async (_name: string, callback: () => unknown) => callback()) },
+  })
   localStorage.clear()
   sessionStorage.clear()
   window.history.replaceState({}, '', '/')
@@ -42,6 +45,8 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  consentGate.allowed = false
+  consentGate.stops.forEach(stop => stop('reset'))
   for (const listener of listeners) window.removeEventListener('storage', listener)
   vi.unstubAllEnvs()
   vi.restoreAllMocks()
@@ -228,7 +233,16 @@ describe('PostHog privacy and identity boundary', () => {
 
 
 const consentGate = vi.hoisted(() => ({ allowed: true, stops: [] as Array<(reason?: 'pause' | 'reset' | 'context-change') => void>, listeners: [] as Array<() => void> }))
-vi.mock('../privacy/consentStore', () => ({ analyticsCollectionAllowed: () => consentGate.allowed, consentStore: { subscribe: (callback: () => void) => { consentGate.listeners.push(callback); return () => {} }, onStop: (callback: () => void) => { consentGate.stops.push(callback); return () => {} } } }))
+vi.mock('../privacy/consentStore', () => ({ analyticsCollectionAllowed: () => consentGate.allowed,
+  consentStore: {
+    getSnapshot: () => ({ context: { consent: { scopeVersion: 'analytics-scope-3' }, requiredScopeVersion: 'analytics-scope-3' } }),
+    remainingConsentLifetime: () => 180 * 24 * 60 * 60 * 1000,
+    transition: () => { consentGate.allowed = false; consentGate.stops.forEach(stop => stop('context-change')); consentGate.listeners.forEach(listener => listener()) },
+    refresh: async () => {},
+    subscribe: (callback: () => void) => { consentGate.listeners.push(callback); return () => {} },
+    onStop: (callback: (reason?: 'pause' | 'reset' | 'context-change') => void) => { consentGate.stops.push(callback); return () => {} },
+  },
+}))
 
 it('does not initialize or retain pre-consent events and clears the SDK on withdrawal', async () => {
   consentGate.allowed = false
@@ -241,7 +255,7 @@ it('does not initialize or retain pre-consent events and clears the SDK on withd
   await vi.dynamicImportSettled()
   expect(sdk.capture.mock.calls.some(([name]) => name === 'view_complex')).toBe(false)
   consentGate.allowed = false
-  consentGate.stops.forEach(stop => stop())
+  consentGate.stops.forEach(stop => stop('reset'))
   expect(sdk.opt_out_capturing).toHaveBeenCalled()
   expect(analytics.captureProductEvent('view_complex', { complex_id: '17' })).toBe(false)
 })
@@ -251,7 +265,7 @@ it('opts the SDK in only after a valid choice, and starts fresh after withdrawal
   const analytics = await initialized()
   expect(sdk.opt_in_capturing).toHaveBeenCalledWith({ captureEventName: false })
   consentGate.allowed = false
-  consentGate.stops.forEach(stop => stop())
+  consentGate.stops.forEach(stop => stop('reset'))
   consentGate.allowed = true
   expect(analytics.captureProductEvent('view_complex', { complex_id: '22' })).toBe(true)
   await vi.dynamicImportSettled()
@@ -264,7 +278,7 @@ it('drops a revoked import even if permission returns before that old import res
   const analytics = await import('./productAnalytics')
   analytics.captureProductEvent('view_complex', { complex_id: '17' })
   consentGate.allowed = false
-  consentGate.stops.forEach(stop => stop())
+  consentGate.stops.forEach(stop => stop('reset'))
   consentGate.allowed = true
   expect(analytics.captureProductEvent('view_complex', { complex_id: '22' })).toBe(true)
   await vi.dynamicImportSettled()

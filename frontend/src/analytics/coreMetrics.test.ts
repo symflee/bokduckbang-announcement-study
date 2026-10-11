@@ -6,6 +6,10 @@ const consent = vi.hoisted(() => ({ allowed: true,
 }))
 vi.mock('../privacy/consentStore', () => ({ analyticsCollectionAllowed: () => consent.allowed,
   consentStore: {
+    getSnapshot: () => ({ context: { consent: { scopeVersion: 'analytics-scope-3' }, requiredScopeVersion: 'analytics-scope-3' } }),
+    remainingConsentLifetime: () => 180 * 24 * 60 * 60 * 1000,
+    transition: () => { consent.allowed = false; consent.stops.forEach(listener => listener('context-change')); consent.listeners.forEach(listener => listener()) },
+    refresh: async () => {},
     onStop: (listener: (reason?: 'pause' | 'reset' | 'context-change') => void) => { consent.stops.push(listener); return () => {} },
     subscribe: (listener: () => void) => { consent.listeners.push(listener); return () => {} },
   },
@@ -33,6 +37,9 @@ beforeEach(() => {
   vi.stubEnv('VITE_ANALYTICS_ENV', 'dev')
   vi.stubEnv('VITE_POSTHOG_LOCAL_ENABLED', 'true')
   vi.stubEnv('MODE', 'development')
+  Object.defineProperty(navigator, 'locks', { configurable: true,
+    value: { request: vi.fn(async (_name: string, callback: () => unknown) => callback()) },
+  })
   localStorage.clear(); sessionStorage.clear()
   window.history.replaceState({}, '', '/')
 })

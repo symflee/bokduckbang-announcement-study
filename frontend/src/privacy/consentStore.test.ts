@@ -517,10 +517,24 @@ it('같은 비회원 scope라도 쿠키 context가 교체되면 이전 허용 �
   replacement.subject.contextId = 'replacement-guest-context'
   api.context.mockResolvedValue(replacement)
   await store.refresh()
-  expect(stopped).toHaveBeenCalledWith('reset', false, generation + 1)
+  expect(stopped).toHaveBeenCalledWith('consent-replaced', false, generation + 1)
+  expect(stopped.mock.calls.some(([reason]) => reason === 'reset')).toBe(false)
   expect(store.generation()).toBe(generation + 1)
   expect(store.getSnapshot().context?.subject.contextId).toBe('replacement-guest-context')
   expect(store.allowed()).toBe(true)
+})
+
+it('교체된 비회원 context가 비허용이면 교체 신호 뒤에도 reset을 유지한다', async () => {
+  const { store, api } = setup(context('GUEST', 'GRANTED', 1))
+  await store.refresh()
+  const stopped = vi.fn(); store.onStop(stopped)
+  const replacement = context('GUEST')
+  replacement.subject.contextId = 'ungranted-guest-context'
+  api.context.mockResolvedValue(replacement)
+  await store.refresh()
+  expect(stopped.mock.calls.map(([reason]) => reason)).toEqual(['consent-replaced', 'reset'])
+  expect(store.allowed()).toBe(false)
+  expect(store.remainingConsentLifetime()).toBe(0)
 })
 
 it.each(['revision', 'decidedAt', 'scopeVersion'] as const)(
@@ -537,7 +551,8 @@ it.each(['revision', 'decidedAt', 'scopeVersion'] as const)(
     else replacement.consent.scopeVersion = 'scope-2'
     api.context.mockResolvedValue(replacement)
     await store.refresh()
-    expect(stopped).toHaveBeenCalledWith('reset')
+    expect(stopped).toHaveBeenCalledWith('consent-replaced')
+    expect(stopped).not.toHaveBeenCalledWith('reset')
     expect(store.generation()).toBe(generation + 1)
     expect(store.allowed()).toBe(true)
   },
@@ -568,4 +583,100 @@ it('동일 context의 과거 revision 응답은 새 허용 교체로 오인하�
   expect(store.generation()).toBe(generation)
   expect(store.getSnapshot().context?.consent.revision).toBe(3)
   expect(store.allowed()).toBe(true)
+})
+
+it('검증 전에는 동의 보관 가능 기간을 제공하지 않고 서버 확인 지연도 남은 기간에서 뺀다', async () => {
+  const now = vi.spyOn(performance, 'now').mockReturnValue(1000)
+  const granted = context('MEMBER', 'GRANTED', 1)
+  granted.consent.expiresAt = '2026-10-09T00:02:00Z'
+  const { store, api } = setup(granted)
+  expect(store.remainingConsentLifetime()).toBe(0)
+  const response = deferred<ConsentContext>()
+  api.context.mockReturnValueOnce(response.promise)
+  const refreshing = store.refresh()
+  now.mockReturnValue(3500)
+  response.resolve(granted)
+  await refreshing
+  expect(store.remainingConsentLifetime()).toBe(117_500)
+  vi.spyOn(Date, 'now').mockReturnValue(Date.parse('2025-01-01T00:00:00Z'))
+  now.mockReturnValue(4500)
+  expect(store.remainingConsentLifetime()).toBe(116_500)
+})
+
+it.each([null, '', 'invalid', '2026-10-08T23:59:59Z'])(
+  '만료 시각 %s가 없거나 유효한 미래 시각이 아니면 보관 가능 기간은 0이다', async expiresAt => {
+    const granted = context('MEMBER', 'GRANTED', 1)
+    granted.consent.expiresAt = expiresAt
+    const { store } = setup(granted)
+    await store.refresh()
+    expect(store.remainingConsentLifetime()).toBe(0)
+  },
+)
+
+it.each<EffectiveStatus>(['UNSET', 'DENIED', 'WITHDRAWN', 'EXPIRED', 'RECONSENT_REQUIRED'])(
+  '미래 만료 시각이 있어도 서버의 %s 상태는 보관 가능 기간을 주지 않는다', async effectiveStatus => {
+    const snapshot = context('MEMBER', 'GRANTED', 1)
+    snapshot.consent.expiresAt = '2026-10-09T00:02:00Z'
+    snapshot.consent.effectiveStatus = effectiveStatus
+    snapshot.collectionAllowed = false
+    const { store } = setup(snapshot)
+    await store.refresh()
+    expect(store.remainingConsentLifetime()).toBe(0)
+  },
+)
+
+it('포커스 재확인 중에도 마지막 검증 만료 시각을 유지하고 재확인으로 기간을 연장하지 않는다', async () => {
+  const now = vi.spyOn(performance, 'now').mockReturnValue(1000)
+  const granted = context('MEMBER', 'GRANTED', 1)
+  granted.consent.expiresAt = '2026-10-09T00:02:00Z'
+  const { store, api } = setup(granted)
+  const cleanup = store.start()
+  try {
+    await vi.waitFor(() => expect(store.allowed()).toBe(true))
+    const response = deferred<ConsentContext>()
+    api.context.mockReturnValueOnce(response.promise)
+    now.mockReturnValue(2000)
+    window.dispatchEvent(new Event('focus'))
+    expect(store.allowed()).toBe(false)
+    expect(store.remainingConsentLifetime()).toBe(119_000)
+    response.resolve({ ...granted, checkedAt: '2026-10-09T00:00:01Z' })
+    await vi.waitFor(() => expect(store.allowed()).toBe(true))
+    expect(store.remainingConsentLifetime()).toBe(119_000)
+  } finally { cleanup() }
+})
+
+it('명시적 철회는 서버 응답 전에 보관 가능 기간을 0으로 만들고 stop 구독자도 0을 읽는다', async () => {
+  vi.spyOn(performance, 'now').mockReturnValue(1000)
+  const granted = context('MEMBER', 'GRANTED', 1)
+  granted.consent.expiresAt = '2026-10-09T00:02:00Z'
+  const { store, api } = setup(granted)
+  await store.refresh()
+  expect(store.remainingConsentLifetime()).toBe(120_000)
+  const stopped = vi.fn()
+  store.onStop(reason => stopped(reason, store.remainingConsentLifetime()))
+  const response = deferred<ConsentContext>()
+  api.choose.mockReturnValueOnce(response.promise)
+  const choosing = store.choose('WITHDRAW', 'SETTINGS')
+  expect(store.remainingConsentLifetime()).toBe(0)
+  expect(stopped).toHaveBeenCalledWith('reset', 0)
+  await vi.waitFor(() => expect(api.choose).toHaveBeenCalledOnce())
+  response.resolve(context('MEMBER', 'WITHDRAWN', 2))
+  await choosing
+  expect(store.remainingConsentLifetime()).toBe(0)
+})
+
+it('lease 중단 뒤 재확인이 없어도 실제 동의 만료 시 남은 기간은 0이지만 추가 reset 타이머는 없다', async () => {
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance'] })
+  const granted = context('MEMBER', 'GRANTED', 1)
+  granted.consent.expiresAt = '2026-10-09T00:02:00Z'
+  const { store } = setup(granted)
+  const stopped = vi.fn(); store.onStop(stopped)
+  await store.refresh()
+  await vi.advanceTimersByTimeAsync(60_000)
+  expect(store.allowed()).toBe(false)
+  expect(store.remainingConsentLifetime()).toBe(60_000)
+  expect(stopped).toHaveBeenCalledExactlyOnceWith('pause')
+  await vi.advanceTimersByTimeAsync(60_000)
+  expect(store.remainingConsentLifetime()).toBe(0)
+  expect(stopped).toHaveBeenCalledOnce()
 })

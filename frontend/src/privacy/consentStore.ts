@@ -7,7 +7,7 @@ const AUTH_CHANGE_KEY = 'toadzip.privacy.auth-changed'
 const AUTH_PENDING_PREFIX = 'toadzip.privacy.auth-pending:'
 const OAUTH_TRANSITION_KEY = 'toadzip.privacy.oauth-transition'
 const MAX_STOP_AGE = 180 * 24 * 60 * 60 * 1000
-export type AnalyticsStopReason = 'pause' | 'reset' | 'context-change'
+export type AnalyticsStopReason = 'pause' | 'reset' | 'context-change' | 'consent-replaced'
 interface Stop { commandId: string; createdAt: number; choice?: Choice }
 interface State { context: ConsentContext | null; loading: boolean; saving: boolean; error: string; pendingStop: boolean; requiresChoice: boolean }
 const scopeOf = (context: ConsentContext) => context.subject.kind === 'MEMBER' ? `MEMBER:${context.subject.userId}` : 'GUEST'
@@ -30,6 +30,14 @@ export class ConsentStore {
   constructor(api = privacyApi) { this.api = api }
   getSnapshot = () => this.state
   generation = () => this.epoch
+  /** Retention limit in milliseconds; collection still requires allowed(). */
+  remainingConsentLifetime = () => {
+    const context = this.state.context
+    if (!context?.collectionAllowed || context.consent.effectiveStatus !== 'GRANTED'
+      || !context.consent.expiresAt || !Number.isFinite(Date.parse(context.consent.expiresAt))
+      || !Number.isFinite(this.consentExpiresAt)) return 0
+    return Math.max(0, this.consentExpiresAt - performance.now())
+  }
   subscribe = (listener: () => void) => { this.listeners.add(listener); return () => { this.listeners.delete(listener) } }
   onStop = (listener: (reason: AnalyticsStopReason) => void) => { this.stopListeners.add(listener); return () => { this.stopListeners.delete(listener) } }
   private update(next: Partial<State>, stopReason?: AnalyticsStopReason) {
@@ -42,6 +50,7 @@ export class ConsentStore {
     this.leaseTimer = undefined
     this.leaseUntil = 0
     const effectiveReason = reason === 'pause' && performance.now() >= this.consentExpiresAt ? 'reset' : reason
+    if (effectiveReason === 'reset') this.consentExpiresAt = 0
     this.stopListeners.forEach(listener => listener(effectiveReason))
     this.update({})
   }
@@ -250,7 +259,7 @@ export class ConsentStore {
       if (old && (scopeOf(old) !== scopeOf(context) || this.grantReplaced(old, context))) {
         expectedEpoch = ++this.epoch
         this.retryChoice = null
-        this.stop(scopeOf(old) === scopeOf(context) ? 'reset' : 'context-change')
+        this.stop(scopeOf(old) === scopeOf(context) ? 'consent-replaced' : 'context-change')
       }
       const scope = scopeOf(context)
       await this.cleanupStops(context, () => expectedEpoch === this.epoch && sequence === this.sequence && !this.state.saving)

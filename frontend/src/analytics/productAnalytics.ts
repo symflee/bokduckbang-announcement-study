@@ -1,8 +1,10 @@
-import { analyticsCollectionAllowed, consentStore } from '../privacy/consentStore'
+import { analyticsCollectionAllowed, consentStore, type AnalyticsStopReason } from '../privacy/consentStore'
 import type { CaptureResult, PostHogConfig } from 'posthog-js/no-external'
 import type { PostHog } from 'posthog-js/no-external'
 import { maskReplayAttribute } from './replayPrivacy'
 import { guardPostHogTransport } from './posthogTransport'
+import { BROWSER_IDENTITY_PREFIX, clearBrowserAnalyticsIdentities, loadBrowserAnalyticsIdentity,
+  readBrowserAnalyticsIdentity, removeBrowserAnalyticsIdentity, type BrowserAnalyticsIdentity } from './browserAnalyticsIdentity'
 export { maskReplayAttribute } from './replayPrivacy'
 import { isProductEvent, sanitizeProductProperties, type ProductProperties, type SafeProperties } from './productEvents'
 
@@ -13,6 +15,8 @@ const CORE_EVENT_NAMES = new Set(['view_complex', 'view_announcement', 'notifica
 const CORE_MAX_AGE_MS = 24 * 60 * 60 * 1000
 const CORE_RETRY_DELAY_MS = 30_000
 const MAX_DEDUPLICATION_KEYS = 1000
+const REQUIRED_ANALYTICS_SCOPE = 'analytics-scope-3'
+const MAX_TIMEOUT = 2_147_483_647
 const PUBLIC_PATHS = new Set(['/', '/feedback', '/notifications/cancel', '/mypage/notifications'])
 type AuthState = 'member' | 'guest' | 'unknown'
 export type CaptureOptions = { dedupeKey?: string; authState?: AuthState; pageName?: 'explorer' | 'feedback' | 'guest_cancellation' | 'notification_settings' }
@@ -22,9 +26,10 @@ const corePending = new Map<string, CoreEvent>()
 let corePermissionGeneration = 0
 let coreRetryTimer: ReturnType<typeof setTimeout> | undefined
 let instance: PostHog | undefined
-// Preserve this page's anonymous browser identity across temporary SDK restarts.
-// Durable identity across reloads requires the updated consent notice.
-let browserDistinctId: string | undefined
+let browserIdentity: BrowserAnalyticsIdentity | undefined
+let identityDeadline = 0
+let identityTimer: ReturnType<typeof setTimeout> | undefined
+let identityCleanup: Promise<void> = Promise.resolve()
 let transport: ReturnType<typeof guardPostHogTransport> | undefined
 let generation = 0
 let loading: Promise<void> | undefined
@@ -65,7 +70,49 @@ function browserExcluded(): boolean {
 }
 
 function collectionAllowed(): boolean {
-  return analyticsCollectionAllowed() && !failed && routeActive && PUBLIC_PATHS.has(window.location.pathname) && !browserExcluded()
+  const context = consentStore.getSnapshot().context
+  return analyticsCollectionAllowed() && context?.consent.scopeVersion === REQUIRED_ANALYTICS_SCOPE
+    && context.requiredScopeVersion === REQUIRED_ANALYTICS_SCOPE
+    && (!browserIdentity || identityCurrent())
+    && !failed && routeActive && PUBLIC_PATHS.has(window.location.pathname) && !browserExcluded()
+}
+
+function identityCurrent(): boolean {
+  const config = configuration()
+  if (!browserIdentity || !config || performance.now() >= identityDeadline) return false
+  const stored = readBrowserAnalyticsIdentity(config.key)
+  return stored?.id === browserIdentity.id && stored.expiresAt > Date.now()
+}
+
+function releaseIdentity(): void {
+  clearTimeout(identityTimer)
+  identityTimer = undefined
+  browserIdentity = undefined
+  identityDeadline = 0
+}
+
+function forgetOwnedIdentity(): void {
+  const config = configuration()
+  const ownedId = browserIdentity?.id
+  releaseIdentity()
+  if (ownedId && config) identityCleanup = identityCleanup.then(() => removeBrowserAnalyticsIdentity(config.key, ownedId))
+}
+
+function refreshIdentity(): void {
+  forgetOwnedIdentity()
+  // Discard the old identity's queues, and require fresh server permission.
+  consentStore.transition()
+  void consentStore.refresh()
+}
+
+function scheduleIdentityExpiry(): void {
+  clearTimeout(identityTimer)
+  if (!browserIdentity) return
+  const remaining = Math.min(identityDeadline - performance.now(), browserIdentity.expiresAt - Date.now())
+  identityTimer = setTimeout(() => {
+    if (!identityCurrent()) refreshIdentity()
+    else scheduleIdentityExpiry()
+  }, Math.max(0, Math.min(MAX_TIMEOUT, remaining)))
 }
 
 function safePageName(): NonNullable<CaptureOptions['pageName']> {
@@ -115,6 +162,7 @@ export function sanitizeCapture(event: CaptureResult | null): CaptureResult | nu
   properties.$ip = null
   properties.environment = configuration()?.environment
   properties.schema_version = 1
+  properties.identity_basis = 'browser_v1'
   properties.page_name = ['explorer', 'feedback', 'guest_cancellation', 'notification_settings'].includes(event.properties.page_name)
     ? event.properties.page_name : safePageName()
   properties.auth_state = ['member', 'guest', 'unknown'].includes(event.properties.auth_state)
@@ -173,9 +221,21 @@ function installListeners(): void {
   if (listenersInstalled) return
   listenersInstalled = true
   window.addEventListener('storage', (event) => {
+    if ((event.key === null || event.key?.startsWith(BROWSER_IDENTITY_PREFIX)) && browserIdentity) {
+      if (!identityCurrent()) refreshIdentity()
+      else {
+        const config = configuration()
+        const stored = config && readBrowserAnalyticsIdentity(config.key)
+        if (stored && stored.expiresAt < browserIdentity.expiresAt) {
+          browserIdentity = stored
+          identityDeadline = Math.min(identityDeadline, performance.now() + stored.expiresAt - Date.now())
+          scheduleIdentityExpiry()
+        }
+      }
+    }
     if (event.key === EXCLUSION_KEY || event.key === null) {
       if (browserExcluded()) {
-        stopCollection()
+        stopCollection('context-change')
       }
       // The application gate owns team exclusion. Do not overwrite a separate
       // SDK opt-out, which must remain independent when this key is removed.
@@ -196,17 +256,27 @@ function initialize(): void {
   const expected = generation
   const current = () => expected === generation && collectionAllowed()
   sdkModule ??= import('posthog-js/no-external')
-  const operation = sdkModule.then(({ PostHog }) => {
+  const operation = sdkModule.then(async ({ PostHog }) => {
+    await identityCleanup
     if (!current()) return
+    const identity = await loadBrowserAnalyticsIdentity(config.key, consentStore.remainingConsentLifetime, current, loaded => {
+      if (!current()) return
+      const deadline = performance.now() + Math.max(0, loaded.expiresAt - Date.now())
+      identityDeadline = browserIdentity?.id === loaded.id ? Math.min(identityDeadline, deadline) : deadline
+      // Establish ownership under the same lock as creation. A reset before init
+      // must still know which ID belonged to this consent generation.
+      browserIdentity = loaded
+      scheduleIdentityExpiry()
+    })
+    if (!identity || !current()) return
     const next = new PostHog()
     const nextTransport = guardPostHogTransport(next, current, acknowledgeCoreEvent)
     transport = nextTransport
     instance = next
     let ready = false
-    browserDistinctId ??= createAnalyticsId()
     next.init(config.key, {
       ...productAnalyticsOptions(), api_host: config.host,
-      bootstrap: { distinctID: browserDistinctId, isIdentifiedID: false },
+      bootstrap: { distinctID: identity.id, isIdentifiedID: false },
       loaded: () => {
         nextTransport.ready()
         if (current()) { next.opt_in_capturing({ captureEventName: false }); ready = true }
@@ -220,13 +290,14 @@ function initialize(): void {
     flushCoreEvents()
     syncReplay()
   }).catch(() => {
-    if (expected === generation) { stopCollection(); failed = true }
+    if (expected === generation) { stopCollection('pause'); failed = true }
   }).finally(() => { if (loading === operation) loading = undefined })
   loading = operation
 }
 
-function stopCollection(reason: 'pause' | 'reset' | 'context-change' = 'reset'): void {
-  if (reason === 'reset') browserDistinctId = undefined
+function stopCollection(reason: AnalyticsStopReason = 'reset'): void {
+  if (reason === 'reset') { releaseIdentity(); clearBrowserAnalyticsIdentities() }
+  if (reason === 'consent-replaced') forgetOwnedIdentity()
   clearTimeout(coreRetryTimer)
   coreRetryTimer = undefined
   if (reason === 'pause') {
@@ -334,6 +405,7 @@ function queueCoreEvent(event: PendingEvent, options: CaptureOptions): boolean {
 /** Accepted means queued locally. Core deduplication is committed only after HTTP acceptance. */
 export function captureProductEvent(name: string, properties: ProductProperties = {}, options: CaptureOptions = {}): boolean {
   try {
+    if (browserIdentity && !identityCurrent()) { refreshIdentity(); return false }
     if (!isProductEvent(name) || !configuration() || !collectionAllowed()) return false
     const event = preparedEvent(name, properties, options)
     if (CORE_EVENT_NAMES.has(name)) return queueCoreEvent(event, options)
@@ -370,7 +442,7 @@ export function setProductPageActive(active: boolean): void {
   routeActive = active
   // StrictMode temporarily deactivates the boundary without leaving the page.
   // Do not discard already deduplicated safe events during that cleanup.
-  if (!PUBLIC_PATHS.has(window.location.pathname) || browserExcluded()) stopCollection()
+  if (!PUBLIC_PATHS.has(window.location.pathname) || browserExcluded()) stopCollection('context-change')
   if (active && collectionAllowed()) { initialize(); flushCoreEvents() }
   syncReplay()
 }
@@ -390,8 +462,13 @@ export function setReplaySensitive(reason: string, active: boolean): void {
 }
 
 consentStore.subscribe(() => {
+  if (browserIdentity && !identityCurrent()) { refreshIdentity(); return }
   if (collectionAllowed()) { initialize(); flushCoreEvents() }
 })
+
+// Closed browsers cannot run timers. Expired records are removed on the next execution,
+// even before permission is available; they are never reused or silently extended.
+clearBrowserAnalyticsIdentities(true)
 
 consentStore.onStop((reason) => {
   stopCollection(reason)

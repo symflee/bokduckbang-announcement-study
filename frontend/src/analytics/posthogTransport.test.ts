@@ -5,7 +5,12 @@ import { productAnalyticsOptions } from './productAnalytics'
 const consent = vi.hoisted(() => ({ allowed: true }))
 vi.mock('../privacy/consentStore', () => ({
   analyticsCollectionAllowed: () => consent.allowed,
-  consentStore: { onStop: () => () => {}, subscribe: () => () => {} },
+  consentStore: {
+    getSnapshot: () => ({ context: { consent: { scopeVersion: 'analytics-scope-3' }, requiredScopeVersion: 'analytics-scope-3' } }),
+    remainingConsentLifetime: () => 180 * 24 * 60 * 60 * 1000,
+    transition: () => { consent.allowed = false }, refresh: async () => {},
+    onStop: () => () => {}, subscribe: () => () => {},
+  },
 }))
 const network = vi.fn<typeof fetch>()
 const transports: Array<ReturnType<typeof guardPostHogTransport>> = []
@@ -19,6 +24,9 @@ beforeEach(() => {
     return Promise.resolve(new Response('{}', { status: 200 }))
   })
   vi.stubGlobal('fetch', network)
+  Object.defineProperty(navigator, 'locks', { configurable: true,
+    value: { request: vi.fn(async (_name: string, callback: () => unknown) => callback()) },
+  })
   localStorage.clear()
   sessionStorage.clear()
   window.history.replaceState({}, '', '/?email=private@example.test#secret')
@@ -39,6 +47,7 @@ async function sdk(batch = false, onResponse?: (eventId: string, statusCode: num
   transports.push(transport)
   instance.init('phc_localtesttoken', {
     ...productAnalyticsOptions(), request_batching: batch,
+    bootstrap: { distinctID: crypto.randomUUID(), isIdentifiedID: false },
     loaded: () => { transport.ready(); instance.opt_in_capturing({ captureEventName: false }) },
   })
   return { instance, transport }

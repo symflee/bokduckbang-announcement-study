@@ -14,6 +14,10 @@ const consent = vi.hoisted(() => ({ allowed: true, listeners: new Set<() => void
 vi.mock('../../privacy/consentStore', () => ({
   analyticsCollectionAllowed: () => consent.allowed,
   consentStore: {
+    getSnapshot: () => ({ context: { consent: { scopeVersion: 'analytics-scope-3' }, requiredScopeVersion: 'analytics-scope-3' } }),
+    remainingConsentLifetime: () => 180 * 24 * 60 * 60 * 1000,
+    transition: () => { consent.allowed = false; consent.stopListeners.forEach(listener => listener('context-change')); consent.listeners.forEach(listener => listener()) },
+    refresh: async () => {},
     subscribe(listener: () => void) {
       consent.listeners.add(listener)
       return () => consent.listeners.delete(listener)
@@ -41,6 +45,9 @@ function Probe({ location, ready }: { location: DetailLocationResult; ready: str
 const wrap = ({ children }: { children: React.ReactNode }) => <StrictMode><MemoryRouter>{children}</MemoryRouter></StrictMode>
 beforeEach(() => {
   consent.allowed = true
+  Object.defineProperty(navigator, 'locks', { configurable: true,
+    value: { request: vi.fn(async (_name: string, callback: () => unknown) => callback()) },
+  })
   capture.mockClear().mockImplementation(() => consent.allowed)
   vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue(rectangle)
   vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible')
