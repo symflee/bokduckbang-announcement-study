@@ -1,7 +1,7 @@
 import { Link } from 'react-router'
 import { analyticsCollectionAllowed, consentStore } from '../../privacy/consentStore'
 import { usePrivacyNotices } from '../../privacy/usePrivacy'
-import { captureProductEvent, setProductAuthState, setReplaySensitive } from '../../analytics/productAnalytics'
+import { captureProductEvent, prepareNotificationCompletion, setProductAuthState, setReplaySensitive } from '../../analytics/productAnalytics'
 import { type KeyboardEvent, type ReactNode, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { notificationInterestRepository, NotificationRequestError, type NotificationEventSource, type NotificationEventType, type NotificationInterestEvent, type NotificationInterestRepository, type NotificationInterestResult, type NotificationTarget } from './notificationInterestRepository'
 import { getCurrentUser } from '../../user/auth/api'
@@ -16,13 +16,14 @@ interface Action extends Selection {
   readonly event: NotificationInterestEvent
   readonly authState: 'member'
   readonly pageName: 'explorer' | 'notification_settings'
+  readonly completeAnalytics?: ReturnType<typeof prepareNotificationCompletion>
 }
 
 function captureCompletion(action: Action, result: NotificationInterestResult | void) {
   const properties = { target_type: action.target.type, target_id: action.target.id,
     source: action.source, notification_action_id: action.event.eventId }
   if (result?.outcome === 'ACTIVATED' && action.event.eventType === 'CONFIRMED') {
-    captureProductEvent('notification_preregistration_completed', {
+    action.completeAnalytics?.({
       ...properties, completion_source: action.event.eventType, server_event_id: result.eventId,
       occurred_at: result.occurredAt,
     }, { dedupeKey: `notification-completed:${result.eventId}`, authState: action.authState, pageName: action.pageName })
@@ -361,7 +362,13 @@ export function NotificationInterestProvider({ children, repository = notificati
       <div className={styles.target}><strong>알림 기능은 현재 준비 중이에요.</strong><p className={styles.hint}>{notificationPreparationNotice}</p></div>
       <div className={styles.actions}>
         <button className={styles.cancel} type="button" disabled={busy} onClick={dismiss}>취소</button>
-        <button className={styles.submit} type="button" disabled={busy || !noticeVersion} onClick={() => { const action: Action = { ...selection, event: eventFor(selection, 'CONFIRMED'), authState: 'member', pageName: window.location.pathname === '/mypage/notifications' ? 'notification_settings' : 'explorer' }; setDialog(null); void send(action) }}>신청하기</button>
+        <button className={styles.submit} type="button" disabled={busy || !noticeVersion} onClick={() => {
+          const action: Action = { ...selection, event: eventFor(selection, 'CONFIRMED'), authState: 'member',
+            pageName: window.location.pathname === '/mypage/notifications' ? 'notification_settings' : 'explorer',
+            completeAnalytics: prepareNotificationCompletion() }
+          setDialog(null)
+          void send(action)
+        }}>신청하기</button>
       </div>
       <p className={styles.hint}>알림 설정 저장에 이용자 ID와 선택한 대상을 사용해요.</p>
       <p className={styles.hint}>이 설정은 회원 계정에 연결해 저장돼요.</p>

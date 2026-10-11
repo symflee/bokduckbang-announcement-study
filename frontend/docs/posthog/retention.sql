@@ -2,6 +2,7 @@ WITH daily_activity AS (
  SELECT toDate(toTimeZone(timestamp, 'Asia/Seoul')) AS activity_date, distinct_id
  FROM events
  WHERE event IN ('view_complex', 'view_announcement') AND properties.environment = 'dev'
+  AND properties.identity_basis = 'browser_v1'
   AND timestamp >= addDays(toStartOfDay(toTimeZone(now(), 'Asia/Seoul')), -29) AND timestamp < now()
  GROUP BY activity_date, distinct_id
 ), browser_returns AS (

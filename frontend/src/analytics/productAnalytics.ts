@@ -1,19 +1,35 @@
-import { analyticsCollectionAllowed, consentStore } from '../privacy/consentStore'
+import { analyticsCollectionAllowed, consentStore, type AnalyticsStopReason } from '../privacy/consentStore'
 import type { CaptureResult, PostHogConfig } from 'posthog-js/no-external'
 import type { PostHog } from 'posthog-js/no-external'
 import { maskReplayAttribute } from './replayPrivacy'
 import { guardPostHogTransport } from './posthogTransport'
+import { BROWSER_IDENTITY_PREFIX, clearBrowserAnalyticsIdentities, loadBrowserAnalyticsIdentity,
+  readBrowserAnalyticsIdentity, removeBrowserAnalyticsIdentity, type BrowserAnalyticsIdentity } from './browserAnalyticsIdentity'
 export { maskReplayAttribute } from './replayPrivacy'
 import { isProductEvent, sanitizeProductProperties, type ProductProperties, type SafeProperties } from './productEvents'
 
 const EXCLUSION_KEY = 'toadzip.analytics.disabled'
 const DEDUPLICATION_KEY = 'toadzip.posthog.sent-actions.v1'
 const MAX_PENDING = 100
+const CORE_EVENT_NAMES = new Set(['view_complex', 'view_announcement', 'notification_preregistration_completed'])
+const CORE_MAX_AGE_MS = 24 * 60 * 60 * 1000
+const CORE_RETRY_DELAY_MS = 30_000
 const MAX_DEDUPLICATION_KEYS = 1000
+const REQUIRED_ANALYTICS_SCOPE = 'analytics-scope-3'
+const MAX_TIMEOUT = 2_147_483_647
 const PUBLIC_PATHS = new Set(['/', '/feedback', '/notifications/cancel', '/mypage/notifications'])
 type AuthState = 'member' | 'guest' | 'unknown'
+export type CaptureOptions = { dedupeKey?: string; authState?: AuthState; pageName?: 'explorer' | 'feedback' | 'guest_cancellation' | 'notification_settings' }
 type PendingEvent = { name: string; properties: SafeProperties; timestamp: Date }
+type CoreEvent = PendingEvent & { uuid: string; dedupeKey?: string; expiresAt: number; state: 'queued' | 'in_flight' }
+const corePending = new Map<string, CoreEvent>()
+let corePermissionGeneration = 0
+let coreRetryTimer: ReturnType<typeof setTimeout> | undefined
 let instance: PostHog | undefined
+let browserIdentity: BrowserAnalyticsIdentity | undefined
+let identityDeadline = 0
+let identityTimer: ReturnType<typeof setTimeout> | undefined
+let identityCleanup: Promise<void> = Promise.resolve()
 let transport: ReturnType<typeof guardPostHogTransport> | undefined
 let generation = 0
 let loading: Promise<void> | undefined
@@ -54,10 +70,52 @@ function browserExcluded(): boolean {
 }
 
 function collectionAllowed(): boolean {
-  return analyticsCollectionAllowed() && !failed && routeActive && PUBLIC_PATHS.has(window.location.pathname) && !browserExcluded()
+  const context = consentStore.getSnapshot().context
+  return analyticsCollectionAllowed() && context?.consent.scopeVersion === REQUIRED_ANALYTICS_SCOPE
+    && context.requiredScopeVersion === REQUIRED_ANALYTICS_SCOPE
+    && (!browserIdentity || identityCurrent())
+    && !failed && routeActive && PUBLIC_PATHS.has(window.location.pathname) && !browserExcluded()
 }
 
-function safePageName(): string {
+function identityCurrent(): boolean {
+  const config = configuration()
+  if (!browserIdentity || !config || performance.now() >= identityDeadline) return false
+  const stored = readBrowserAnalyticsIdentity(config.key)
+  return stored?.id === browserIdentity.id && stored.expiresAt > Date.now()
+}
+
+function releaseIdentity(): void {
+  clearTimeout(identityTimer)
+  identityTimer = undefined
+  browserIdentity = undefined
+  identityDeadline = 0
+}
+
+function forgetOwnedIdentity(): void {
+  const config = configuration()
+  const ownedId = browserIdentity?.id
+  releaseIdentity()
+  if (ownedId && config) identityCleanup = identityCleanup.then(() => removeBrowserAnalyticsIdentity(config.key, ownedId))
+}
+
+function refreshIdentity(): void {
+  forgetOwnedIdentity()
+  // Discard the old identity's queues, and require fresh server permission.
+  consentStore.transition()
+  void consentStore.refresh()
+}
+
+function scheduleIdentityExpiry(): void {
+  clearTimeout(identityTimer)
+  if (!browserIdentity) return
+  const remaining = Math.min(identityDeadline - performance.now(), browserIdentity.expiresAt - Date.now())
+  identityTimer = setTimeout(() => {
+    if (!identityCurrent()) refreshIdentity()
+    else scheduleIdentityExpiry()
+  }, Math.max(0, Math.min(MAX_TIMEOUT, remaining)))
+}
+
+function safePageName(): NonNullable<CaptureOptions['pageName']> {
   if (window.location.pathname === '/feedback') return 'feedback'
   if (window.location.pathname === '/notifications/cancel') return 'guest_cancellation'
   if (window.location.pathname === '/mypage/notifications') return 'notification_settings'
@@ -104,6 +162,7 @@ export function sanitizeCapture(event: CaptureResult | null): CaptureResult | nu
   properties.$ip = null
   properties.environment = configuration()?.environment
   properties.schema_version = 1
+  properties.identity_basis = 'browser_v1'
   properties.page_name = ['explorer', 'feedback', 'guest_cancellation', 'notification_settings'].includes(event.properties.page_name)
     ? event.properties.page_name : safePageName()
   properties.auth_state = ['member', 'guest', 'unknown'].includes(event.properties.auth_state)
@@ -162,9 +221,21 @@ function installListeners(): void {
   if (listenersInstalled) return
   listenersInstalled = true
   window.addEventListener('storage', (event) => {
+    if ((event.key === null || event.key?.startsWith(BROWSER_IDENTITY_PREFIX)) && browserIdentity) {
+      if (!identityCurrent()) refreshIdentity()
+      else {
+        const config = configuration()
+        const stored = config && readBrowserAnalyticsIdentity(config.key)
+        if (stored && stored.expiresAt < browserIdentity.expiresAt) {
+          browserIdentity = stored
+          identityDeadline = Math.min(identityDeadline, performance.now() + stored.expiresAt - Date.now())
+          scheduleIdentityExpiry()
+        }
+      }
+    }
     if (event.key === EXCLUSION_KEY || event.key === null) {
       if (browserExcluded()) {
-        stopCollection()
+        stopCollection('context-change')
       }
       // The application gate owns team exclusion. Do not overwrite a separate
       // SDK opt-out, which must remain independent when this key is removed.
@@ -185,15 +256,27 @@ function initialize(): void {
   const expected = generation
   const current = () => expected === generation && collectionAllowed()
   sdkModule ??= import('posthog-js/no-external')
-  const operation = sdkModule.then(({ PostHog }) => {
+  const operation = sdkModule.then(async ({ PostHog }) => {
+    await identityCleanup
     if (!current()) return
+    const identity = await loadBrowserAnalyticsIdentity(config.key, consentStore.remainingConsentLifetime, current, loaded => {
+      if (!current()) return
+      const deadline = performance.now() + Math.max(0, loaded.expiresAt - Date.now())
+      identityDeadline = browserIdentity?.id === loaded.id ? Math.min(identityDeadline, deadline) : deadline
+      // Establish ownership under the same lock as creation. A reset before init
+      // must still know which ID belonged to this consent generation.
+      browserIdentity = loaded
+      scheduleIdentityExpiry()
+    })
+    if (!identity || !current()) return
     const next = new PostHog()
-    const nextTransport = guardPostHogTransport(next, current)
+    const nextTransport = guardPostHogTransport(next, current, acknowledgeCoreEvent)
     transport = nextTransport
     instance = next
     let ready = false
     next.init(config.key, {
       ...productAnalyticsOptions(), api_host: config.host,
+      bootstrap: { distinctID: identity.id, isIdentifiedID: false },
       loaded: () => {
         nextTransport.ready()
         if (current()) { next.opt_in_capturing({ captureEventName: false }); ready = true }
@@ -204,14 +287,25 @@ function initialize(): void {
     const queue = pending
     pending = []
     queue.forEach(send)
+    flushCoreEvents()
     syncReplay()
   }).catch(() => {
-    if (expected === generation) { stopCollection(); failed = true }
+    if (expected === generation) { stopCollection('pause'); failed = true }
   }).finally(() => { if (loading === operation) loading = undefined })
   loading = operation
 }
 
-function stopCollection(): void {
+function stopCollection(reason: AnalyticsStopReason = 'reset'): void {
+  if (reason === 'reset') { releaseIdentity(); clearBrowserAnalyticsIdentities() }
+  if (reason === 'consent-replaced') forgetOwnedIdentity()
+  clearTimeout(coreRetryTimer)
+  coreRetryTimer = undefined
+  if (reason === 'pause') {
+    for (const event of corePending.values()) event.state = 'queued'
+  } else {
+    corePermissionGeneration++
+    corePending.clear()
+  }
   generation++
   pending = []
   loading = undefined
@@ -220,6 +314,7 @@ function stopCollection(): void {
   transport = undefined
   instance = undefined
   previous?.stop()
+  if (reason === 'pause') scheduleCoreRetry()
 }
 
 function hasBeenSent(key: string): boolean {
@@ -236,23 +331,110 @@ function remember(key: string): void {
   if (seen.size > MAX_DEDUPLICATION_KEYS) seen.delete(seen.values().next().value ?? '')
 }
 
-export function captureProductEvent(name: string, properties: ProductProperties = {}, options: { dedupeKey?: string; authState?: AuthState; pageName?: 'explorer' | 'feedback' | 'guest_cancellation' | 'notification_settings' } = {}): boolean {
+function preparedEvent(name: string, properties: ProductProperties, options: CaptureOptions): PendingEvent {
+  const safeProperties = sanitizeProductProperties(properties)
+  safeProperties.event_id ??= createAnalyticsId()
+  safeProperties.auth_state = options.authState ?? authState
+  safeProperties.page_name = options.pageName ?? safePageName()
+  const occurredAt = safeProperties.occurred_at
+  return { name, properties: safeProperties, timestamp: typeof occurredAt === 'string' ? new Date(occurredAt) : new Date() }
+}
+
+function pruneCoreEvents(): void {
+  const now = Date.now()
+  for (const [id, event] of corePending) if (event.expiresAt <= now) corePending.delete(id)
+}
+
+function scheduleCoreRetry(): void {
+  if (coreRetryTimer || corePending.size === 0) return
+  coreRetryTimer = setTimeout(() => {
+    coreRetryTimer = undefined
+    pruneCoreEvents()
+    if (collectionAllowed()) { initialize(); flushCoreEvents() }
+    if (corePending.size > 0) scheduleCoreRetry()
+  }, CORE_RETRY_DELAY_MS)
+}
+
+function acknowledgeCoreEvent(eventId: string, statusCode: number): void {
+  const event = corePending.get(eventId)
+  if (!event) return
+  if (statusCode >= 200 && statusCode < 300) {
+    corePending.delete(eventId)
+    // This is transport acceptance, not a guarantee of final warehouse ingestion.
+    if (event.dedupeKey) {
+      try { remember(event.dedupeKey) } catch { /* The in-memory dedupe remains valid. */ }
+    }
+  } else if (statusCode >= 400 && statusCode < 500 && statusCode !== 408 && statusCode !== 429) {
+    corePending.delete(eventId)
+  } else {
+    // The SDK owns retries until its final callback. Never race its retry queue.
+    event.state = 'queued'
+    scheduleCoreRetry()
+  }
+  if (corePending.size === 0) { clearTimeout(coreRetryTimer); coreRetryTimer = undefined }
+}
+
+function flushCoreEvents(): void {
+  pruneCoreEvents()
+  if (!instance || !collectionAllowed()) return
+  for (const event of corePending.values()) {
+    if (!collectionAllowed()) return
+    if (event.state !== 'queued') continue
+    event.state = 'in_flight'
+    try {
+      const result = instance.capture(event.name, event.properties, { timestamp: event.timestamp, uuid: event.uuid })
+      if (!result) event.state = 'queued'
+    } catch { event.state = 'queued' }
+  }
+  scheduleCoreRetry()
+}
+
+function queueCoreEvent(event: PendingEvent, options: CaptureOptions): boolean {
+  pruneCoreEvents()
+  const eventId = String(event.properties.event_id)
+  if (corePending.has(eventId) || (options.dedupeKey && (hasBeenSent(options.dedupeKey)
+    || [...corePending.values()].some(pendingEvent => pendingEvent.dedupeKey === options.dedupeKey)))) return false
+  if (corePending.size >= MAX_PENDING) return false
+  corePending.set(eventId, { ...event, uuid: eventId, dedupeKey: options.dedupeKey,
+    expiresAt: Date.now() + CORE_MAX_AGE_MS, state: 'queued' })
+  if (collectionAllowed()) { initialize(); flushCoreEvents() }
+  else scheduleCoreRetry()
+  return true
+}
+
+/** Accepted means queued locally. Core deduplication is committed only after HTTP acceptance. */
+export function captureProductEvent(name: string, properties: ProductProperties = {}, options: CaptureOptions = {}): boolean {
   try {
+    if (browserIdentity && !identityCurrent()) { refreshIdentity(); return false }
     if (!isProductEvent(name) || !configuration() || !collectionAllowed()) return false
+    const event = preparedEvent(name, properties, options)
+    if (CORE_EVENT_NAMES.has(name)) return queueCoreEvent(event, options)
     if (options.dedupeKey && hasBeenSent(options.dedupeKey)) return false
     if (!instance && pending.length >= MAX_PENDING) return false
-    const safeProperties = sanitizeProductProperties(properties)
-    safeProperties.event_id ??= createAnalyticsId()
-    safeProperties.auth_state = options.authState ?? authState
-    safeProperties.page_name = options.pageName ?? safePageName()
-    const occurredAt = safeProperties.occurred_at
-    const event = { name, properties: safeProperties, timestamp: typeof occurredAt === 'string' ? new Date(occurredAt) : new Date() }
     if (instance) send(event)
     else { pending.push(event); initialize() }
     if (options.dedupeKey) remember(options.dedupeKey)
     return true
-  } catch {
-    return false
+  } catch { return false }
+}
+
+/** Create once per original business action, and reuse for idempotent action retries. */
+export function prepareNotificationCompletion(): (properties: ProductProperties, options?: CaptureOptions) => boolean {
+  const permitted = !!configuration() && collectionAllowed()
+  const expected = corePermissionGeneration
+  const config = configuration()
+  const expiresAt = Date.now() + CORE_MAX_AGE_MS
+  const originalAuthState = authState
+  const originalPage = safePageName()
+  return (properties, options = {}) => {
+    try {
+      const current = configuration()
+      if (!permitted || expected !== corePermissionGeneration || Date.now() >= expiresAt
+        || !current || current.key !== config?.key || current.environment !== config.environment
+        || browserExcluded() || !PUBLIC_PATHS.has(window.location.pathname)) return false
+      return queueCoreEvent(preparedEvent('notification_preregistration_completed', properties,
+        { ...options, authState: options.authState ?? originalAuthState, pageName: options.pageName ?? originalPage }), options)
+    } catch { return false }
   }
 }
 
@@ -260,7 +442,8 @@ export function setProductPageActive(active: boolean): void {
   routeActive = active
   // StrictMode temporarily deactivates the boundary without leaving the page.
   // Do not discard already deduplicated safe events during that cleanup.
-  if (!PUBLIC_PATHS.has(window.location.pathname) || browserExcluded()) stopCollection()
+  if (!PUBLIC_PATHS.has(window.location.pathname) || browserExcluded()) stopCollection('context-change')
+  if (active && collectionAllowed()) { initialize(); flushCoreEvents() }
   syncReplay()
 }
 
@@ -278,8 +461,18 @@ export function setReplaySensitive(reason: string, active: boolean): void {
   syncReplay()
 }
 
-consentStore.onStop(() => {
-  stopCollection()
+consentStore.subscribe(() => {
+  if (browserIdentity && !identityCurrent()) { refreshIdentity(); return }
+  if (collectionAllowed()) { initialize(); flushCoreEvents() }
+})
+
+// Closed browsers cannot run timers. Expired records are removed on the next execution,
+// even before permission is available; they are never reused or silently extended.
+clearBrowserAnalyticsIdentities(true)
+
+consentStore.onStop((reason) => {
+  stopCollection(reason)
+  if (reason === 'pause') return
   seen.clear()
   try {
     sessionStorage.removeItem(DEDUPLICATION_KEY)

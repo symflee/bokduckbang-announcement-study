@@ -1,11 +1,19 @@
-import { captureProductEvent, setProductAuthState, setReplaySensitive } from '../../analytics/productAnalytics'
+import { captureProductEvent, prepareNotificationCompletion, setProductAuthState, setReplaySensitive } from '../../analytics/productAnalytics'
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { MemoryRouter } from 'react-router'
 import { NotificationInterestButton, NotificationInterestProvider } from './NotificationInterest'
 import { createNotificationInterestRepository, type NotificationInterestEvent, type NotificationInterestRepository, type NotificationInterestResult, type NotificationOutcome, type NotificationSubscriptionStatus } from './notificationInterestRepository'
 
-vi.mock('../../analytics/productAnalytics', () => ({ captureProductEvent: vi.fn(), setProductAuthState: vi.fn(), setReplaySensitive: vi.fn() }))
+vi.mock('../../analytics/productAnalytics', () => {
+  const captureProductEvent = vi.fn()
+  return { captureProductEvent, setProductAuthState: vi.fn(), setReplaySensitive: vi.fn(),
+    prepareNotificationCompletion: vi.fn(() => (properties: unknown, options: unknown) => {
+      captureProductEvent('notification_preregistration_completed', properties, options)
+      return true
+    }),
+  }
+})
 
 beforeEach(() => { vi.clearAllMocks(); localStorage.clear(); sessionStorage.clear() })
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals() })
@@ -91,6 +99,22 @@ it('저장 실패는 선택 상태를 바꾸지 않고 같은 이벤트로 재�
   expect(await screen.findByRole('dialog', { name: '알림 기능을 준비하고 있어요' })).toBeVisible()
   expect(repo.record.mock.calls[0]?.[0]).toEqual(repo.record.mock.calls[1]?.[0])
   expect(button).toHaveAttribute('aria-pressed', 'true')
+  expect(prepareNotificationCompletion).toHaveBeenCalledOnce()
+})
+
+it('최초 신청이 분석 대상이 아니면 동의 후 같은 요청을 재시도해도 완료를 소급 수집하지 않는다', async () => {
+  vi.mocked(prepareNotificationCompletion).mockReturnValueOnce(() => false)
+  const repo = repository()
+  repo.record.mockRejectedValueOnce(new Error('response lost'))
+  render(example(repo))
+  await click()
+  await screen.findByRole('alert')
+  // A new call to prepareNotificationCompletion would now allow collection.
+  fireEvent.click(screen.getByRole('button', { name: '다시 시도' }))
+  await screen.findByRole('dialog', { name: '알림 기능을 준비하고 있어요' })
+  expect(repo.record.mock.calls[0]?.[0]).toEqual(repo.record.mock.calls[1]?.[0])
+  expect(captured('notification_preregistration_completed')).toHaveLength(0)
+  expect(prepareNotificationCompletion).toHaveBeenCalledOnce()
 })
 
 it('해제 실패는 기존 설정을 유지하고 닫은 뒤 다시 해제할 수 있다', async () => {

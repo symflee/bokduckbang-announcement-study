@@ -7,10 +7,27 @@ type QueuedRequestWithOptions = Parameters<PostHog['_send_request']>[0]
  * Its shutdown also flushes. Keep these version-specific transport boundaries
  * together and exercise them with the installed SDK in posthogTransport.test.ts.
  */
-export function guardPostHogTransport(instance: PostHog, allowed: () => boolean) {
+export function guardPostHogTransport(instance: PostHog, allowed: () => boolean,
+  onResponse?: (eventId: string, statusCode: number) => void) {
   let active = true
   const lifetime = new AbortController()
   const current = () => active && allowed()
+  const completionCallbacks = new WeakSet<object>()
+  const observeCompletion = (options: QueuedRequestWithOptions): QueuedRequestWithOptions => {
+    if (!onResponse || (options.callback && completionCallbacks.has(options.callback))) return options
+    const data = options.data
+    if (!data || Array.isArray(data) || typeof data !== 'object') return options
+    const properties = Reflect.get(data, 'properties')
+    const eventId: unknown = properties && typeof properties === 'object' ? Reflect.get(properties, 'event_id') : undefined
+    if (typeof eventId !== 'string') return options
+    const original = options.callback
+    const callback: NonNullable<QueuedRequestWithOptions['callback']> = response => {
+      try { original?.(response) }
+      finally { if (current()) onResponse(eventId, response.statusCode) }
+    }
+    completionCallbacks.add(callback)
+    return { ...options, callback }
+  }
   const prepare = (options: QueuedRequestWithOptions): QueuedRequestWithOptions => {
     const fetchOptions = {
       ...options.fetchOptions,
@@ -21,7 +38,7 @@ export function guardPostHogTransport(instance: PostHog, allowed: () => boolean)
       // The SDK merges these after its own signal. Retain a request deadline.
       signal: AbortSignal.any([lifetime.signal, AbortSignal.timeout(10_000)]),
     }
-    return { ...options, transport: 'fetch', disableTransport: ['XHR', 'sendBeacon'], fetchOptions }
+    return { ...observeCompletion(options), transport: 'fetch', disableTransport: ['XHR', 'sendBeacon'], fetchOptions }
   }
   const send = instance._send_request.bind(instance)
   const retry = instance._send_retriable_request.bind(instance)
