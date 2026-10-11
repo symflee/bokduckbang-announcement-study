@@ -153,3 +153,16 @@ it('does not keep retrying a final non-retriable rejection or mark it as accepte
   await vi.advanceTimersByTimeAsync(120_000)
   expect(network).toHaveBeenCalledOnce()
 })
+
+it.each([408, 429])('retries a temporary HTTP %i rejection with the original UUID', async status => {
+  network.mockResolvedValueOnce(new Response('{}', { status }))
+  const analytics = await import('./productAnalytics')
+  analytics.captureProductEvent('view_complex', { complex_id: '17' }, { dedupeKey: 'visit:temporary' })
+  await settled()
+  expect(sessionStorage.getItem('toadzip.posthog.sent-actions.v1')).toBeNull()
+  const first = payload(0)
+  await vi.advanceTimersByTimeAsync(30_000)
+  expect(network).toHaveBeenCalledTimes(2)
+  expect(payload(1).uuid).toBe(first.uuid)
+  expect(sessionStorage.getItem('toadzip.posthog.sent-actions.v1')).toContain('visit:temporary')
+})

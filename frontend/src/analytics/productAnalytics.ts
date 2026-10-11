@@ -287,7 +287,7 @@ function acknowledgeCoreEvent(eventId: string, statusCode: number): void {
     if (event.dedupeKey) {
       try { remember(event.dedupeKey) } catch { /* The in-memory dedupe remains valid. */ }
     }
-  } else if (statusCode >= 400 && statusCode < 500) {
+  } else if (statusCode >= 400 && statusCode < 500 && statusCode !== 408 && statusCode !== 429) {
     corePending.delete(eventId)
   } else {
     // The SDK owns retries until its final callback. Never race its retry queue.
