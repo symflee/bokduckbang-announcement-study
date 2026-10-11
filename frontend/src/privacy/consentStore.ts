@@ -7,6 +7,7 @@ const AUTH_CHANGE_KEY = 'toadzip.privacy.auth-changed'
 const AUTH_PENDING_PREFIX = 'toadzip.privacy.auth-pending:'
 const OAUTH_TRANSITION_KEY = 'toadzip.privacy.oauth-transition'
 const MAX_STOP_AGE = 180 * 24 * 60 * 60 * 1000
+export type AnalyticsStopReason = 'pause' | 'reset' | 'context-change'
 interface Stop { commandId: string; createdAt: number; choice?: Choice }
 interface State { context: ConsentContext | null; loading: boolean; saving: boolean; error: string; pendingStop: boolean; requiresChoice: boolean }
 const scopeOf = (context: ConsentContext) => context.subject.kind === 'MEMBER' ? `MEMBER:${context.subject.userId}` : 'GUEST'
@@ -17,25 +18,32 @@ export class ConsentStore {
   private epoch = 0
   private sequence = 0
   private leaseUntil = 0
+  private consentExpiresAt = Infinity
   private leaseTimer: number | undefined
   private checkedAuthVersion: string | null = null
   private readonly authPending = new Map<string, number>()
   private authChannel: BroadcastChannel | null = null
   private started = false
   private retryChoice: { kind: 'MEMBER' | 'GUEST'; scope: string; choice: Choice; markerId?: string } | null = null
-  private stopListeners = new Set<() => void>()
+  private stopListeners = new Set<(reason: AnalyticsStopReason) => void>()
   private readonly api: typeof privacyApi
   constructor(api = privacyApi) { this.api = api }
   getSnapshot = () => this.state
   generation = () => this.epoch
   subscribe = (listener: () => void) => { this.listeners.add(listener); return () => { this.listeners.delete(listener) } }
-  onStop = (listener: () => void) => { this.stopListeners.add(listener); return () => { this.stopListeners.delete(listener) } }
-  private update(next: Partial<State>) { this.state = { ...this.state, ...next }; this.listeners.forEach(listener => listener()) }
-  private stop() {
+  onStop = (listener: (reason: AnalyticsStopReason) => void) => { this.stopListeners.add(listener); return () => { this.stopListeners.delete(listener) } }
+  private update(next: Partial<State>, stopReason?: AnalyticsStopReason) {
+    this.state = { ...this.state, ...next }
+    if (stopReason) { this.stop(stopReason); return }
+    this.listeners.forEach(listener => listener())
+  }
+  private stop(reason: AnalyticsStopReason = 'pause') {
     window.clearTimeout(this.leaseTimer)
     this.leaseTimer = undefined
     this.leaseUntil = 0
-    this.stopListeners.forEach(listener => listener())
+    const effectiveReason = reason === 'pause' && performance.now() >= this.consentExpiresAt ? 'reset' : reason
+    this.stopListeners.forEach(listener => listener(effectiveReason))
+    this.update({})
   }
   private readStop(scope: string): Stop | null {
     let saved = this.stops.get(scope) ?? null
@@ -107,7 +115,7 @@ export class ConsentStore {
   }
   private async writeStop(scope: string, marker: Stop) {
     this.stops.set(scope, marker)
-    this.stop()
+    this.stop('reset')
     this.update({ pendingStop: true })
     await this.lock(`privacy-stop:${scope}`, () => {
       try { localStorage.setItem(`${STOP_PREFIX}${scope}`, JSON.stringify(marker)); this.notify() }
@@ -139,12 +147,24 @@ export class ConsentStore {
   }
   private renewLease(context: ConsentContext, started: number) {
     window.clearTimeout(this.leaseTimer)
+    this.consentExpiresAt = context.consent.expiresAt
+      ? started + Math.max(0, Date.parse(context.consent.expiresAt) - Date.parse(context.checkedAt)) : Infinity
     this.leaseUntil = this.lease(context, started)
     // SDK batches/retries must stop at expiry even if no new application event occurs.
     this.leaseTimer = window.setTimeout(() => {
       this.stop()
-      this.update({})
     }, Math.max(0, this.leaseUntil - performance.now()))
+  }
+  private requiresReset(context: ConsentContext) {
+    return !context.collectionAllowed || context.consent.effectiveStatus !== 'GRANTED'
+      || !!this.readStop(scopeOf(context)) || this.requiresChoice(context) || performance.now() >= this.consentExpiresAt
+  }
+  private grantReplaced(previous: ConsentContext, current: ConsentContext) {
+    if (previous.subject.contextId !== current.subject.contextId) return true
+    return previous.consent.effectiveStatus === 'GRANTED' && current.consent.effectiveStatus === 'GRANTED'
+      && (previous.consent.revision !== current.consent.revision
+        || previous.consent.decidedAt !== current.consent.decidedAt
+        || previous.consent.scopeVersion !== current.consent.scopeVersion)
   }
   private notify() { try { localStorage.setItem(CHANGE_KEY, crypto.randomUUID()) } catch { /* No grant is inferred from storage. */ } }
   private authentication() {
@@ -212,11 +232,11 @@ export class ConsentStore {
       && this.checkedAuthVersion !== null && this.authenticationMatches(this.checkedAuthVersion)
       && !this.readStop(scopeOf(context)) && !this.requiresChoice(context)
   }
-  transition = () => { this.epoch++; this.sequence++; this.stop(); this.checkedAuthVersion = null; this.retryChoice = null; this.update({ context: null, loading: true, saving: false, error: '', pendingStop: false, requiresChoice: false }) }
+  transition = () => { this.epoch++; this.sequence++; this.stop('context-change'); this.checkedAuthVersion = null; this.retryChoice = null; this.update({ context: null, loading: true, saving: false, error: '', pendingStop: false, requiresChoice: false }) }
   refresh = async () => {
     this.cleanupAuthTransitions()
     const authentication = this.authentication()
-    if (!authentication || authentication.pending) { this.stop(); this.update({ loading: false, error: authentication ? '로그인 상태가 변경 중이에요. 분석을 잠시 중지합니다.' : '브라우저 저장이 제한되어 분석을 중지했어요.' }); return }
+    if (!authentication || authentication.pending) { this.stop(authentication?.pending ? 'context-change' : 'pause'); this.update({ loading: false, error: authentication ? '로그인 상태가 변경 중이에요. 분석을 잠시 중지합니다.' : '브라우저 저장이 제한되어 분석을 중지했어요.' }); return }
     const epoch = this.epoch
     let expectedEpoch = epoch
     const sequence = ++this.sequence
@@ -224,19 +244,24 @@ export class ConsentStore {
     try {
       const context = await this.api.context()
       if (epoch !== this.epoch || sequence !== this.sequence || this.state.saving) return
-      if (!this.authenticationMatches(authentication.version)) { this.stop(); return }
+      if (!this.authenticationMatches(authentication.version)) { this.stop('context-change'); return }
       const old = this.state.context
-      if (old && scopeOf(old) !== scopeOf(context)) { this.stop(); this.retryChoice = null; expectedEpoch = ++this.epoch }
       if (old && scopeOf(old) === scopeOf(context) && old.subject.contextId === context.subject.contextId && context.consent.revision < old.consent.revision) return
+      if (old && (scopeOf(old) !== scopeOf(context) || this.grantReplaced(old, context))) {
+        expectedEpoch = ++this.epoch
+        this.retryChoice = null
+        this.stop(scopeOf(old) === scopeOf(context) ? 'reset' : 'context-change')
+      }
       const scope = scopeOf(context)
       await this.cleanupStops(context, () => expectedEpoch === this.epoch && sequence === this.sequence && !this.state.saving)
       if (expectedEpoch !== this.epoch || sequence !== this.sequence || this.state.saving) return
-      if (!this.authenticationMatches(authentication.version)) { this.stop(); return }
+      if (!this.authenticationMatches(authentication.version)) { this.stop('context-change'); return }
       const pending = this.readStop(scope)
       this.checkedAuthVersion = authentication.version
       this.renewLease(context, started)
-      this.update({ context, loading: false, pendingStop: !!pending, requiresChoice: this.requiresChoice(context), error: pending?.commandId === 'storage-unavailable' ? '브라우저 저장이 제한되어 분석을 중지했어요.' : this.retryChoice ? this.state.error : '' })
-      if (!this.allowed()) this.stop()
+      this.state = { ...this.state, context, loading: false, pendingStop: !!pending, requiresChoice: this.requiresChoice(context), error: pending?.commandId === 'storage-unavailable' ? '브라우저 저장이 제한되어 분석을 중지했어요.' : this.retryChoice ? this.state.error : '' }
+      if (!this.allowed()) this.stop(this.requiresReset(context) ? 'reset' : 'pause')
+      else this.update({})
       if (pending?.choice && !this.retryChoice) {
         this.retryChoice = { kind: context.subject.kind, scope, choice: pending.choice }
         void this.retry()
@@ -259,7 +284,7 @@ export class ConsentStore {
     const commandId = crypto.randomUUID()
     const oldMarker = this.readStop(scope)?.commandId
     this.retryChoice = null
-    this.stop(); this.sequence++
+    this.stop(action === 'GRANT' ? 'pause' : 'reset'); this.sequence++
     this.update({ saving: true, error: '' })
     if (action !== 'GRANT') await this.writeStop(scope, { commandId, createdAt: Date.now() })
     const perform = async () => {
@@ -281,14 +306,14 @@ export class ConsentStore {
       if (epoch !== this.epoch || !this.authenticationMatches(authVersion)) return
       this.retryChoice = null
       this.renewLease(verified, started)
-      this.update({ context: verified, pendingStop: !!this.readStop(scope), requiresChoice: this.requiresChoice(verified) }); this.notify()
+      this.update({ context: verified, pendingStop: !!this.readStop(scope), requiresChoice: this.requiresChoice(verified) }, this.requiresReset(verified) ? 'reset' : undefined); this.notify()
     }
     try { await (initial.subject.kind === 'GUEST' ? this.lock('privacy-guest-context', perform) : perform()) }
     catch (error) { if (epoch === this.epoch) this.handleError(error) }
     finally { if (epoch === this.epoch) this.update({ saving: false }) }
   }
   private handleError(error: unknown) {
-    this.stop()
+    this.stop(error instanceof PrivacyError && error.code === 'PRIVACY_NOTICE_CHANGED' ? 'reset' : 'pause')
     if (error instanceof PrivacyError && error.status === 409) {
       const failed = this.retryChoice
       this.retryChoice = null
@@ -305,7 +330,7 @@ export class ConsentStore {
     const authVersion = this.checkedAuthVersion
     if (authVersion === null || !this.authenticationMatches(authVersion)) { this.transition(); void this.refresh(); return }
     const epoch = this.epoch
-    this.stop(); this.sequence++; this.update({ saving: true, error: '' })
+    this.stop(retry.choice.action === 'GRANT' ? 'pause' : 'reset'); this.sequence++; this.update({ saving: true, error: '' })
     const perform = async () => {
       if (epoch !== this.epoch || !this.authenticationMatches(authVersion)) return
       const started = performance.now()
@@ -317,7 +342,7 @@ export class ConsentStore {
       if (epoch !== this.epoch || !this.authenticationMatches(authVersion)) return
       this.retryChoice = null
       this.renewLease(verified, started)
-      this.update({ context: verified, pendingStop: !!this.readStop(retry.scope), requiresChoice: this.requiresChoice(verified) }); this.notify()
+      this.update({ context: verified, pendingStop: !!this.readStop(retry.scope), requiresChoice: this.requiresChoice(verified) }, this.requiresReset(verified) ? 'reset' : undefined); this.notify()
     }
     try { await (retry.kind === 'GUEST' ? this.lock('privacy-guest-context', perform) : perform()) }
     catch (error) { if (epoch === this.epoch) this.handleError(error) }
@@ -348,7 +373,9 @@ export class ConsentStore {
       if (event.key === null || event.key === CHANGE_KEY || event.key === RESELECT_BEFORE_KEY || event.key.startsWith(STOP_PREFIX)) {
         if (event.key === null) this.stops.clear()
         else if (event.key.startsWith(STOP_PREFIX)) this.stops.delete(event.key.slice(STOP_PREFIX.length))
-        this.stop(); void this.refresh()
+        const current = this.state.context
+        const reset = event.key === null || (current !== null && this.requiresReset(current))
+        this.stop(reset ? 'reset' : 'pause'); void this.refresh()
       }
     }
     window.addEventListener('focus', focus); window.addEventListener('online', focus); window.addEventListener('offline', offline)

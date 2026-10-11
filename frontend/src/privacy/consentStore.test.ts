@@ -1,6 +1,6 @@
 import { beforeEach, afterEach, expect, it, vi } from 'vitest'
 import { ConsentStore } from './consentStore'
-import { privacyApi, PrivacyError, type ConsentContext } from './api'
+import { privacyApi, PrivacyError, type ConsentContext, type EffectiveStatus } from './api'
 
 function context(kind: 'MEMBER' | 'GUEST' = 'MEMBER', decision: 'UNSET' | 'GRANTED' | 'DENIED' | 'WITHDRAWN' = 'UNSET', revision = 0): ConsentContext {
   return { subject: { kind, ...(kind === 'MEMBER' ? { userId: '1' } : {}), contextId: kind === 'MEMBER' ? 'member-context' : 'guest-context' }, consent: { decision, effectiveStatus: decision, revision, noticeVersion: 'analytics-v1', scopeVersion: 'scope-1', decidedAt: null, expiresAt: null }, requiredNoticeVersion: 'analytics-v1', requiredScopeVersion: 'scope-1', collectionAllowed: decision === 'GRANTED', checkedAt: '2026-10-09T00:00:00Z', maxAgeSeconds: 60 }
@@ -127,6 +127,7 @@ it('새 이벤트가 없어도 확인 유효기간 정각에 SDK 중지와 상�
   expect(store.allowed()).toBe(true); expect(stopped).not.toHaveBeenCalled()
   await vi.advanceTimersByTimeAsync(1)
   expect(store.allowed()).toBe(false); expect(stopped).toHaveBeenCalledOnce(); expect(changed).toHaveBeenCalledOnce()
+  expect(stopped).toHaveBeenCalledWith('pause')
 })
 it('서버 동의 만료가 더 빠르면 응답 대기 시간을 포함해 해당 시점에 중지한다', async () => {
   vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance'] })
@@ -141,6 +142,7 @@ it('서버 동의 만료가 더 빠르면 응답 대기 시간을 포함해 해�
   expect(store.allowed()).toBe(true)
   await vi.advanceTimersByTimeAsync(1)
   expect(store.allowed()).toBe(false); expect(stopped).toHaveBeenCalledOnce()
+  expect(stopped).toHaveBeenCalledWith('reset')
 })
 it('재조회로 확인 기간이 갱신되면 이전 타이머가 유효한 수집을 중단하지 않는다', async () => {
   vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance'] })
@@ -359,4 +361,211 @@ it('서버 확인 실패 때는 정리하지 않고 재선택 기준은 과거 �
   await store.refresh(); expect(localStorage.getItem('toadzip.privacy.reselect-before')).toBe(String(serverNow))
   api.context.mockResolvedValue({ ...context('GUEST'), checkedAt: new Date(serverNow + 180 * 86400000).toISOString() })
   await store.refresh(); expect(localStorage.getItem('toadzip.privacy.reselect-before')).toBeNull()
+})
+
+it('포커스 재확인은 gate를 먼저 닫고 pause 뒤 구독자에게 즉시 알린다', async () => {
+  const { store, api } = setup(context('MEMBER', 'GRANTED', 1))
+  const cleanup = store.start()
+  await vi.waitFor(() => expect(store.allowed()).toBe(true))
+  const response = deferred<ConsentContext>()
+  api.context.mockReturnValueOnce(response.promise)
+  const order: string[] = []
+  const removeStop = store.onStop(reason => order.push(`stop:${reason}:${store.allowed()}`))
+  const unsubscribe = store.subscribe(() => order.push(`subscriber:${store.allowed()}`))
+  try {
+    window.dispatchEvent(new Event('focus'))
+    expect(order).toEqual(['stop:pause:false', 'subscriber:false'])
+    response.resolve(context('MEMBER', 'GRANTED', 1))
+    await vi.waitFor(() => expect(store.allowed()).toBe(true))
+    expect(order.at(-1)).toBe('subscriber:true')
+  } finally { removeStop(); unsubscribe(); cleanup() }
+})
+
+it('탭 숨김과 복귀는 pause이며 같은 허용 확인 후 다시 수집한다', async () => {
+  const { store } = setup(context('MEMBER', 'GRANTED', 1))
+  const cleanup = store.start()
+  await vi.waitFor(() => expect(store.allowed()).toBe(true))
+  const stopped = vi.fn(); const changed = vi.fn()
+  store.onStop(stopped); store.subscribe(changed)
+  try {
+    Object.defineProperty(document, 'hidden', { configurable: true, value: true })
+    document.dispatchEvent(new Event('visibilitychange'))
+    expect(store.allowed()).toBe(false)
+    expect(stopped).toHaveBeenLastCalledWith('pause')
+    expect(changed).toHaveBeenCalledOnce()
+    Object.defineProperty(document, 'hidden', { configurable: true, value: false })
+    document.dispatchEvent(new Event('visibilitychange'))
+    await vi.waitFor(() => expect(store.allowed()).toBe(true))
+    expect(stopped.mock.calls.every(([reason]) => reason === 'pause')).toBe(true)
+  } finally { cleanup() }
+})
+
+it('확인 lease가 끝난 뒤 실제 동의도 만료되면 다음 중지는 reset이다', async () => {
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance'] })
+  const granted = context('MEMBER', 'GRANTED', 1)
+  granted.consent.expiresAt = '2026-10-09T00:02:00Z'
+  const { store, api } = setup(granted)
+  const stopped = vi.fn(); store.onStop(stopped)
+  await store.refresh()
+  await vi.advanceTimersByTimeAsync(60_000)
+  expect(stopped).toHaveBeenLastCalledWith('pause')
+  await vi.advanceTimersByTimeAsync(60_000)
+  api.context.mockRejectedValueOnce(new Error('offline'))
+  await store.refresh()
+  expect(stopped).toHaveBeenLastCalledWith('reset')
+  expect(store.allowed()).toBe(false)
+})
+
+it('일시적인 서버 조회 실패는 기존 허용을 폐기하는 reset으로 알리지 않는다', async () => {
+  const { store, api } = setup(context('MEMBER', 'GRANTED', 1))
+  await store.refresh()
+  const stopped = vi.fn(); store.onStop(stopped)
+  api.context.mockRejectedValueOnce(new Error('network'))
+  await store.refresh()
+  expect(stopped).toHaveBeenCalledWith('pause')
+  expect(store.allowed()).toBe(false)
+  await store.refresh()
+  expect(store.allowed()).toBe(true)
+})
+
+it.each<EffectiveStatus>(['UNSET', 'DENIED', 'WITHDRAWN', 'EXPIRED', 'RECONSENT_REQUIRED'])(
+  '서버의 %s 상태는 reset을 통지한다', async effectiveStatus => {
+    const { store, api } = setup(context('MEMBER', 'GRANTED', 1))
+    await store.refresh()
+    const stopped = vi.fn(); store.onStop(stopped)
+    const next = context('MEMBER', 'GRANTED', 2)
+    next.consent.effectiveStatus = effectiveStatus; next.collectionAllowed = false
+    api.context.mockResolvedValue(next)
+    await store.refresh()
+    expect(store.allowed()).toBe(false)
+    expect(stopped).toHaveBeenCalledWith('reset')
+  },
+)
+
+it.each(['DENY', 'WITHDRAW'] as const)('%s 선택은 서버 응답을 기다리지 않고 reset을 알린다', async action => {
+  const { store, api } = setup(context('MEMBER', 'GRANTED', 1))
+  await store.refresh()
+  const response = deferred<ConsentContext>(); api.choose.mockReturnValueOnce(response.promise)
+  const stopped = vi.fn(); store.onStop(stopped)
+  const choosing = store.choose(action, 'SETTINGS')
+  expect(store.allowed()).toBe(false)
+  expect(stopped).toHaveBeenCalledWith('reset')
+  await vi.waitFor(() => expect(api.choose).toHaveBeenCalledOnce())
+  response.resolve(context('MEMBER', action === 'DENY' ? 'DENIED' : 'WITHDRAWN', 2))
+  await choosing
+  expect(store.allowed()).toBe(false)
+})
+
+it('인증 전환과 조회에서 발견한 회원 교체는 context-change로 구분한다', async () => {
+  const { store, api } = setup(context('MEMBER', 'GRANTED', 1))
+  await store.refresh()
+  const stopped = vi.fn(); store.onStop(stopped)
+  const operation = store.beginAuthTransition('logout')
+  expect(stopped).toHaveBeenLastCalledWith('context-change')
+  await store.finishAuthTransition(operation)
+  stopped.mockClear()
+  const another = context('MEMBER', 'GRANTED', 1)
+  another.subject.userId = '2'; another.subject.contextId = 'second-context'
+  api.context.mockResolvedValue(another)
+  await store.refresh()
+  expect(stopped).toHaveBeenCalledWith('context-change')
+  expect(stopped).not.toHaveBeenCalledWith('reset')
+  expect(store.allowed()).toBe(true)
+})
+
+it.each(['clear', 'pending-stop', 'reselect'] as const)('다른 탭의 %s는 재조회 전에 reset을 알린다', async change => {
+  const granted = context('MEMBER', 'GRANTED', 1)
+  granted.consent.decidedAt = '2026-10-08T00:00:00Z'
+  const { store, api } = setup(granted)
+  const cleanup = store.start()
+  await vi.waitFor(() => expect(store.allowed()).toBe(true))
+  const response = deferred<ConsentContext>(); api.context.mockReturnValueOnce(response.promise)
+  const stopped = vi.fn(); store.onStop(stopped)
+  try {
+    let key: string | null = null
+    if (change === 'clear') localStorage.clear()
+    else if (change === 'pending-stop') {
+      key = 'toadzip.privacy.pending-stop:MEMBER:1'
+      localStorage.setItem(key, JSON.stringify({ commandId: 'another-tab', createdAt: Date.parse(granted.checkedAt) }))
+    } else {
+      key = 'toadzip.privacy.reselect-before'
+      localStorage.setItem(key, String(Date.parse(granted.checkedAt)))
+    }
+    window.dispatchEvent(new StorageEvent('storage', { key }))
+    expect(store.allowed()).toBe(false)
+    expect(stopped).toHaveBeenLastCalledWith('reset')
+    response.resolve(granted)
+  } finally { cleanup() }
+})
+
+it('허용 저장의 현재 응답이 이미 철회이면 새 ID를 보존하지 않도록 reset을 알린다', async () => {
+  const { store, api } = setup(context('MEMBER', 'GRANTED', 1))
+  await store.refresh()
+  const stopped = vi.fn(); store.onStop(stopped)
+  api.choose.mockResolvedValue(context('MEMBER', 'WITHDRAWN', 2))
+  await store.choose('GRANT', 'SETTINGS')
+  expect(stopped).toHaveBeenLastCalledWith('reset')
+  expect(store.allowed()).toBe(false)
+})
+
+it('같은 비회원 scope라도 쿠키 context가 교체되면 이전 허용 세대를 폐기한다', async () => {
+  const { store, api } = setup(context('GUEST', 'GRANTED', 1))
+  await store.refresh()
+  const generation = store.generation()
+  const stopped = vi.fn(); store.onStop(reason => stopped(reason, store.allowed(), store.generation()))
+  const replacement = context('GUEST', 'GRANTED', 1)
+  replacement.subject.contextId = 'replacement-guest-context'
+  api.context.mockResolvedValue(replacement)
+  await store.refresh()
+  expect(stopped).toHaveBeenCalledWith('reset', false, generation + 1)
+  expect(store.generation()).toBe(generation + 1)
+  expect(store.getSnapshot().context?.subject.contextId).toBe('replacement-guest-context')
+  expect(store.allowed()).toBe(true)
+})
+
+it.each(['revision', 'decidedAt', 'scopeVersion'] as const)(
+  '중간 철회를 놓쳤어도 허용의 %s 변경을 발견하면 이전 허용 세대를 폐기한다', async field => {
+    const initial = context('MEMBER', 'GRANTED', 1)
+    initial.consent.decidedAt = '2026-10-08T00:00:00Z'
+    const { store, api } = setup(initial)
+    await store.refresh()
+    const generation = store.generation()
+    const stopped = vi.fn(); store.onStop(stopped)
+    const replacement: ConsentContext = { ...initial, consent: { ...initial.consent } }
+    if (field === 'revision') replacement.consent.revision = 3
+    else if (field === 'decidedAt') replacement.consent.decidedAt = '2026-10-09T00:00:00Z'
+    else replacement.consent.scopeVersion = 'scope-2'
+    api.context.mockResolvedValue(replacement)
+    await store.refresh()
+    expect(stopped).toHaveBeenCalledWith('reset')
+    expect(store.generation()).toBe(generation + 1)
+    expect(store.allowed()).toBe(true)
+  },
+)
+
+it('동일한 허용의 서버 확인 시각만 갱신되면 ID와 대기 행동의 세대를 보존한다', async () => {
+  const initial = context('MEMBER', 'GRANTED', 1)
+  initial.consent.decidedAt = '2026-10-08T00:00:00Z'
+  const { store, api } = setup(initial)
+  await store.refresh()
+  const generation = store.generation()
+  const stopped = vi.fn(); store.onStop(stopped)
+  api.context.mockResolvedValue({ ...initial, consent: { ...initial.consent }, checkedAt: '2026-10-09T00:00:30Z' })
+  await store.refresh()
+  expect(stopped).not.toHaveBeenCalled()
+  expect(store.generation()).toBe(generation)
+  expect(store.allowed()).toBe(true)
+})
+
+it('동일 context의 과거 revision 응답은 새 허용 교체로 오인하지 않는다', async () => {
+  const { store, api } = setup(context('MEMBER', 'GRANTED', 3))
+  await store.refresh()
+  const generation = store.generation()
+  const stopped = vi.fn(); store.onStop(stopped)
+  api.context.mockResolvedValue(context('MEMBER', 'GRANTED', 1))
+  await store.refresh()
+  expect(stopped).not.toHaveBeenCalled()
+  expect(store.generation()).toBe(generation)
+  expect(store.getSnapshot().context?.consent.revision).toBe(3)
+  expect(store.allowed()).toBe(true)
 })
