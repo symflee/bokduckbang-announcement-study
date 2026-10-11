@@ -13,8 +13,17 @@ let listeners: EventListenerOrEventListenerObject[] = []
 beforeEach(() => {
   consentGate.allowed = true
   consentGate.stops = []
+  consentGate.listeners = []
   vi.resetModules()
   vi.clearAllMocks()
+  sdk._send_request = vi.fn()
+  sdk._send_retriable_request = vi.fn(options => options.callback?.({ statusCode: 200 }))
+  sdk._retryQueue.retriableRequest = vi.fn()
+  sdk._retryQueue._enqueue = vi.fn()
+  sdk.capture.mockImplementation((name, properties, options) => {
+    sdk._send_retriable_request({ data: { event: name, properties }, callback: undefined })
+    return { event: name, properties, ...options }
+  })
   sdk.init.mockImplementation((_key, options) => { options.loaded?.(sdk); return sdk })
   vi.stubEnv('VITE_POSTHOG_KEY', 'phc_testpublictoken')
   vi.stubEnv('VITE_POSTHOG_HOST', 'https://us.i.posthog.com')
@@ -133,7 +142,7 @@ describe('PostHog privacy and identity boundary', () => {
     expect(analytics.captureProductEvent('view_complex', { complex_id: '17' }, { dedupeKey: 'visit:2' })).toBe(true)
     await vi.dynamicImportSettled()
     expect(sdk.capture.mock.calls.filter(([name]) => name === 'notification_preregistration_completed')).toHaveLength(1)
-    expect(sdk.capture).toHaveBeenCalledWith('notification_preregistration_completed', expect.anything(), { timestamp: new Date(properties.occurred_at) })
+    expect(sdk.capture).toHaveBeenCalledWith('notification_preregistration_completed', expect.anything(), { timestamp: new Date(properties.occurred_at), uuid: expect.any(String) })
   })
 
   it('removes query/hash, person properties, contact, precise location and arbitrary fields', async () => {
@@ -218,8 +227,8 @@ describe('PostHog privacy and identity boundary', () => {
 })
 
 
-const consentGate = vi.hoisted(() => ({ allowed: true, stops: [] as Array<() => void> }))
-vi.mock('../privacy/consentStore', () => ({ analyticsCollectionAllowed: () => consentGate.allowed, consentStore: { onStop: (callback: () => void) => { consentGate.stops.push(callback); return () => {} } } }))
+const consentGate = vi.hoisted(() => ({ allowed: true, stops: [] as Array<(reason?: 'pause' | 'reset' | 'context-change') => void>, listeners: [] as Array<() => void> }))
+vi.mock('../privacy/consentStore', () => ({ analyticsCollectionAllowed: () => consentGate.allowed, consentStore: { subscribe: (callback: () => void) => { consentGate.listeners.push(callback); return () => {} }, onStop: (callback: () => void) => { consentGate.stops.push(callback); return () => {} } } }))
 
 it('does not initialize or retain pre-consent events and clears the SDK on withdrawal', async () => {
   consentGate.allowed = false

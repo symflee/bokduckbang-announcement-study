@@ -5,7 +5,7 @@ import { productAnalyticsOptions } from './productAnalytics'
 const consent = vi.hoisted(() => ({ allowed: true }))
 vi.mock('../privacy/consentStore', () => ({
   analyticsCollectionAllowed: () => consent.allowed,
-  consentStore: { onStop: () => () => {} },
+  consentStore: { onStop: () => () => {}, subscribe: () => () => {} },
 }))
 const network = vi.fn<typeof fetch>()
 const transports: Array<ReturnType<typeof guardPostHogTransport>> = []
@@ -31,11 +31,11 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-async function sdk(batch = false) {
+async function sdk(batch = false, onResponse?: (eventId: string, statusCode: number) => void) {
   // Installed browser bundle: preserves the transport boundaries without the deep CJS fetch receiver bug.
   const { PostHog } = await import('posthog-js/no-external')
   const instance = new PostHog()
-  const transport = guardPostHogTransport(instance, () => consent.allowed)
+  const transport = guardPostHogTransport(instance, () => consent.allowed, onResponse)
   transports.push(transport)
   instance.init('phc_localtesttoken', {
     ...productAnalyticsOptions(), request_batching: batch,
@@ -119,4 +119,31 @@ it('discards real SDK batched requests on withdrawal instead of shutdown-flushin
   window.dispatchEvent(new Event('pagehide'))
   await vi.advanceTimersByTimeAsync(60_000)
   expect(network).not.toHaveBeenCalled()
+})
+
+
+it('acknowledges the real SDK retry path once after success, not when capture queues a retry', async () => {
+  network.mockResolvedValueOnce(new Response('{}', { status: 503 }))
+  const response = vi.fn()
+  const { instance } = await sdk(false, response)
+  const eventId = crypto.randomUUID()
+  instance.capture('view_complex', { complex_id: '17', event_id: eventId }, { uuid: eventId })
+  await vi.advanceTimersByTimeAsync(0)
+  expect(response).not.toHaveBeenCalled()
+  expect(instance._retryQueue?.length).toBe(1)
+  await vi.advanceTimersByTimeAsync(120_000)
+  expect(response).toHaveBeenCalledExactlyOnceWith(eventId, 200)
+  expect(network).toHaveBeenCalledTimes(2)
+})
+
+it('does not acknowledge a late successful response from a stopped transport', async () => {
+  let resolve: (value: Response) => void = () => { throw new Error('request missing') }
+  network.mockImplementation(() => new Promise(finish => { resolve = finish }))
+  const response = vi.fn()
+  const { instance, transport } = await sdk(false, response)
+  instance.capture('view_complex', { complex_id: '17', event_id: crypto.randomUUID() })
+  transport.stop()
+  resolve(new Response('{}', { status: 200 }))
+  await vi.advanceTimersByTimeAsync(0)
+  expect(response).not.toHaveBeenCalled()
 })
