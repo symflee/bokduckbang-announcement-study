@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef } from 'react'
 import { useNavigationType } from 'react-router'
 import { captureProductEvent, createAnalyticsId } from '../../analytics/productAnalytics'
+import { useAnalyticsConsent } from '../../analytics/useAnalyticsConsent'
 import type { DetailEntryPoint } from '../../analytics/googleAnalytics'
 import type { DetailLocationResult } from '../navigation/detailLocation'
 
@@ -12,6 +13,7 @@ export function useProductDetailAnalytics({ detailLocation, readyComplexId, read
   readyComplexId: string | null
   readyAnnouncementId: string | null
 }) {
+  const allowed = useAnalyticsConsent()
   const navigationType = useNavigationType()
   const kind = detailLocation.kind
   const id = kind === 'complex' ? detailLocation.complexId
@@ -40,7 +42,7 @@ export function useProductDetailAnalytics({ detailLocation, readyComplexId, read
         ? 'dialog.housing-detail-layer[aria-label="단지 상세"]'
         : 'dialog.housing-detail-layer[aria-label="공고 상세"]')
       if (dialog) dialog.dataset.detailVisitId = current.id
-      if (!ready || current.sent || !dialog || !isForegroundElement(dialog)) return
+      if (!allowed || !ready || current.sent || !dialog || !isForegroundElement(dialog)) return
       current.sent = captureProductEvent(kind === 'complex' ? 'view_complex' : 'view_announcement', {
         [kind === 'complex' ? 'complex_id' : 'announcement_id']: id,
         detail_visit_id: current.id, entry_point: current.entry,
@@ -58,7 +60,7 @@ export function useProductDetailAnalytics({ detailLocation, readyComplexId, read
       document.removeEventListener('visibilitychange', measure)
       window.removeEventListener('resize', measure)
     }
-  }, [id, key, kind, navigationType, readyAnnouncementId, readyComplexId])
+  }, [allowed, id, key, kind, navigationType, readyAnnouncementId, readyComplexId])
 
   const prepare = useCallback((detailKind: 'complex' | 'announcement', detailId: string, entry: DetailEntryPoint) => {
     const target = `${detailKind}:${detailId}`

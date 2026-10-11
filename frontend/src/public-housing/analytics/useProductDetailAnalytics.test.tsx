@@ -5,23 +5,78 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { DetailLocationResult } from '../navigation/detailLocation'
 import { useProductDetailAnalytics } from './useProductDetailAnalytics'
 import { captureProductEvent } from '../../analytics/productAnalytics'
+import { ProductAnalyticsBoundary } from '../../analytics/ProductAnalyticsBoundary'
 
-vi.mock('../../analytics/productAnalytics', () => ({ captureProductEvent: vi.fn(() => true), createAnalyticsId: () => crypto.randomUUID() }))
+const consent = vi.hoisted(() => ({ allowed: true, listeners: new Set<() => void>() }))
+vi.mock('../../privacy/consentStore', () => ({
+  analyticsCollectionAllowed: () => consent.allowed,
+  consentStore: {
+    subscribe(listener: () => void) {
+      consent.listeners.add(listener)
+      return () => consent.listeners.delete(listener)
+    },
+  },
+}))
+vi.mock('../../analytics/productAnalytics', () => ({
+  captureProductEvent: vi.fn(() => consent.allowed),
+  createAnalyticsId: () => crypto.randomUUID(),
+  setProductPageActive: vi.fn(),
+}))
 const capture = vi.mocked(captureProductEvent)
 const rectangle = { x: 10, y: 10, top: 10, left: 10, bottom: 300, right: 400, width: 390, height: 290, toJSON: () => ({}) }
 function Probe({ location, ready }: { location: DetailLocationResult; ready: string | null }) {
-  useProductDetailAnalytics({ detailLocation: location, readyComplexId: ready, readyAnnouncementId: null })
-  return location.kind === 'complex' ? <dialog open className="housing-detail-layer" aria-label="단지 상세"><h2>상세</h2></dialog> : null
+  useProductDetailAnalytics({ detailLocation: location,
+    readyComplexId: location.kind === 'complex' ? ready : null,
+    readyAnnouncementId: location.kind === 'announcement' ? ready : null })
+  if (location.kind !== 'complex' && location.kind !== 'announcement') return null
+  return <dialog open className="housing-detail-layer" aria-label={location.kind === 'complex' ? '단지 상세' : '공고 상세'}><h2>상세</h2></dialog>
 }
 const wrap = ({ children }: { children: React.ReactNode }) => <StrictMode><MemoryRouter>{children}</MemoryRouter></StrictMode>
 beforeEach(() => {
+  consent.allowed = true
   capture.mockClear()
   vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue(rectangle)
   vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible')
 })
-afterEach(() => { cleanup(); document.querySelectorAll('[data-test-blocker]').forEach(node => node.remove()); vi.restoreAllMocks() })
+afterEach(() => { cleanup(); consent.listeners.clear(); document.querySelectorAll('[data-test-blocker]').forEach(node => node.remove()); vi.restoreAllMocks() })
+
+function collected(name: string) {
+  return capture.mock.calls.filter(([event], index) => event === name && capture.mock.results[index]?.value === true)
+}
+
+async function setConsent(allowed: boolean) {
+  await act(async () => { consent.allowed = allowed; consent.listeners.forEach(listener => listener()) })
+}
 
 describe('제품 활성 상세 계측', () => {
+  it.each(['complex', 'announcement'] as const)('%s 상세가 먼저 표시되어도 동의 확인이 끝나면 현재 방문을 한 번 수집한다', async (kind) => {
+    consent.allowed = false
+    const location: DetailLocationResult = kind === 'complex'
+      ? { kind, complexId: '12' } : { kind, announcementId: '12' }
+    render(<><ProductAnalyticsBoundary /><Probe location={location} ready="12" /></>, { wrapper: wrap })
+    await act(async () => {})
+    expect(collected(`view_${kind}`)).toHaveLength(0)
+
+    // Only the consent store changes: the detail, DOM and viewport stay the same.
+    await setConsent(true)
+    expect(collected('page_view')).toHaveLength(1)
+    expect(collected(`view_${kind}`)).toHaveLength(1)
+    expect(collected(`view_${kind}`)[0]?.[1]).toMatchObject({ [`${kind}_id`]: '12' })
+
+    await setConsent(false)
+    await setConsent(true)
+    expect(collected(`view_${kind}`)).toHaveLength(1)
+  })
+
+  it('동의 확인 전에 닫은 상세 방문을 나중에 소급 수집하지 않는다', async () => {
+    consent.allowed = false
+    const view = render(<Probe location={{ kind: 'complex', complexId: '12' }} ready="12" />, { wrapper: wrap })
+    await act(async () => {})
+    view.rerender(<Probe location={{ kind: 'none' }} ready={null} />)
+    await setConsent(true)
+    expect(collected('view_complex')).toHaveLength(0)
+  })
+
   it('로드 성공이 다른 팝업 뒤에 있으면 기다리고, 노출 후 재렌더와 반응형 재열기는 한 번만 센다', async () => {
     const blocker = document.createElement('dialog'); blocker.open = true; blocker.dataset.testBlocker = 'true'; document.body.append(blocker)
     const view = render(<Probe location={{ kind: 'complex', complexId: '12' }} ready="12" />, { wrapper: wrap })
