@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useRef } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigationType } from 'react-router'
 import { captureProductEvent, createAnalyticsId } from '../../analytics/productAnalytics'
 import { useAnalyticsConsent } from '../../analytics/useAnalyticsConsent'
+import { consentStore } from '../../privacy/consentStore'
 import type { DetailEntryPoint } from '../../analytics/googleAnalytics'
 import type { DetailLocationResult } from '../navigation/detailLocation'
 
@@ -21,6 +22,19 @@ export function useProductDetailAnalytics({ detailLocation, readyComplexId, read
   const key = id === null ? null : `${kind}:${id}`
   const visit = useRef<Visit | null>(null)
   const pending = useRef<{ key: string; entry: DetailEntryPoint; id: string } | null>(null)
+  const [resetVersion, setResetVersion] = useState(0)
+
+  useEffect(() => consentStore.onStop(reason => {
+    if (reason !== 'reset') return
+    if (visit.current) {
+      visit.current.id = createAnalyticsId()
+      visit.current.sent = false
+    }
+    pending.current = null
+    // A new grant can follow reset before React observes allowed=false.
+    // Remeasure only the current visible detail in the new consent lifetime.
+    setResetVersion(version => version + 1)
+  }), [])
 
   useEffect(() => {
     if (visit.current === null || visit.current.key !== key) {
@@ -60,7 +74,7 @@ export function useProductDetailAnalytics({ detailLocation, readyComplexId, read
       document.removeEventListener('visibilitychange', measure)
       window.removeEventListener('resize', measure)
     }
-  }, [allowed, id, key, kind, navigationType, readyAnnouncementId, readyComplexId])
+  }, [allowed, id, key, kind, navigationType, readyAnnouncementId, readyComplexId, resetVersion])
 
   const prepare = useCallback((detailKind: 'complex' | 'announcement', detailId: string, entry: DetailEntryPoint) => {
     const target = `${detailKind}:${detailId}`
