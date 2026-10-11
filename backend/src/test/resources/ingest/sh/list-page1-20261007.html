@@ -1,0 +1,465 @@
+<!doctype html><html><body><nav>사이트 메뉴</nav>
+<form name="mainform" id="mainform" action="./list.do" method="post" onsubmit="$('#page').val(1); return true;">
+		<input type="hidden" name="page" id="page" value="1">
+		<input type="hidden" name="seq" id="seq" value="">
+		<input type="hidden" name="multi_itm_seq" value="2">
+		<input type="hidden" name="multi_itm_seqsStr" value="">
+
+				<!-- 검색 영역 [2개=v2, 3개=없음, 4개=v8] -->
+
+				<div class="searchArea v2">
+					<div class="inner">
+						<p>
+						<!-- 분류1  -->
+
+					<!-- 분류2  -->
+
+							<select name="srchTp" id="s_keyword" title="검색목록선택">
+								<option value="0">제목</option>
+								<option value="1">내용</option>
+							</select>
+						</p>
+						<p>
+							<input type="text" value="" name="srchWord" id="srchWord" title="검색어 입력" placeholder="검색어 입력">
+							<a href="javascript:void(0);" class="btn btnGreen" onclick="goSearch();">검색</a>
+						</p>
+					</div>
+				</div>
+				<!--// 검색 영역 -->
+	</form>
+<div class="topTxt">
+					<p>총 <strong class="cBrown bold">1709</strong> 건 [1/171페이지]</p>
+				</div>
+<div id="listTb" class="listTable colRm">
+							<table>
+								<caption>
+
+									주택임대
+
+									공고 및 공지 목록
+								</caption>
+
+									<!-- 번호 -->
+
+								<!-- 제목 -->
+
+									<!-- 부서명 -->
+
+									<!-- 등록일  -->
+
+									<!-- 조회수  -->
+									 <!-- 조회수는 글번호와 같이 빠진다  -->
+
+								<!-- 반응형으로 삭제되는 컬럼 지정 -->
+
+											<script>$(function(){ $("#listTb").addClass("col1  col4 col5   col3"); });</script>
+
+														<script>$(function(){ $("#listTb").removeClass("col4"); });</script>
+
+								<colgroup>
+
+										<col style="width :10%">
+									<!-- 번호 -->
+
+									<col style="width: auto">
+									<!-- 제목 -->
+
+										<col style="width :160px">
+									<!-- 부서명 -->
+
+										<col style="width :100px">
+									<!-- 작성일 -->
+
+										<col style="width :80px">
+									<!-- 조회수 -->
+
+								</colgroup>
+								<thead>
+									<tr>
+
+											<th scope="col">번호</th>
+										<!-- 번호 -->
+
+											<th scope="col">제목</th>
+										<!-- 제목 -->
+
+										<!-- bckang 리스트에서 첨부파일 삭제 -->
+
+											<th scope="col">담당부서</th>
+										<!-- 부서명 -->
+
+											<th scope="col">등록일</th>
+										<!-- 작성일 -->
+
+											<th scope="col">조회수</th>
+										<!-- 조회수 -->
+
+									</tr>
+								</thead>
+								<tbody>
+								<!-- 공지여부 -->
+
+									<tr>
+
+											<td>1709</td>
+											<!-- 번호 -->
+
+										<td class="txtL">
+
+												<a href="#" class="ellipsis icon" onclick="javascript:getDetailView('311167');return false;">
+
+												<span class="icoNew">NEW</span>
+
+											2026년 2차 희망하우징(공공기숙사) 입주자 모집공고(2026. 9. 17.) 서류심사대상자 발표
+
+												</a>
+
+										</td>
+										<!-- 제목 -->
+										<!-- 첨부파일 Start -->
+
+										<!-- 첨부파일 End -->
+
+											<td>
+												맞춤주택공급부
+											</td>
+											<!-- 부서명 -->
+
+													<td class="num">
+
+															2026-10-07
+
+													</td>
+
+											<td class="num">904</td>
+											<!-- 조회수 -->
+
+									</tr>
+
+									<tr>
+
+											<td>1708</td>
+											<!-- 번호 -->
+
+										<td class="txtL">
+
+												<a href="#" class="ellipsis icon" onclick="javascript:getDetailView('311004');return false;">
+
+												<span class="icoNew">NEW</span>
+
+											[당첨자발표] 2026년 다자녀 매입임대주택 예비자 공급 계약대상자 발표(2026년 예비1차) 및 계약 안내
+
+												</a>
+
+										</td>
+										<!-- 제목 -->
+										<!-- 첨부파일 Start -->
+
+										<!-- 첨부파일 End -->
+
+											<td>
+												매입주택공급부
+											</td>
+											<!-- 부서명 -->
+
+													<td class="num">
+
+															2026-10-07
+
+													</td>
+
+											<td class="num">505</td>
+											<!-- 조회수 -->
+
+									</tr>
+
+									<tr>
+
+											<td>1707</td>
+											<!-- 번호 -->
+
+										<td class="txtL">
+
+												<a href="#" class="ellipsis icon" onclick="javascript:getDetailView('311188');return false;">
+
+												<span class="icoNew">NEW</span>
+
+											[세이지움 태릉입구역] 청년안심주택 예비1차 주택공개 실시안내
+
+												</a>
+
+										</td>
+										<!-- 제목 -->
+										<!-- 첨부파일 Start -->
+
+										<!-- 첨부파일 End -->
+
+											<td>
+												중랑주거안심종합센터
+											</td>
+											<!-- 부서명 -->
+
+													<td class="num">
+
+															2026-10-07
+
+													</td>
+
+											<td class="num">4</td>
+											<!-- 조회수 -->
+
+									</tr>
+
+									<tr>
+
+											<td>1706</td>
+											<!-- 번호 -->
+
+										<td class="txtL">
+
+												<a href="#" class="ellipsis icon" onclick="javascript:getDetailView('311169');return false;">
+
+												<span class="icoNew">NEW</span>
+
+											제8차 장기전세주택2(미리내집) 입주자 모집공고(2026. 8. 21.) 서류심사대상자 발표 및 서류제출 안내
+
+												</a>
+
+										</td>
+										<!-- 제목 -->
+										<!-- 첨부파일 Start -->
+
+										<!-- 첨부파일 End -->
+
+											<td>
+												미리내집공급부
+											</td>
+											<!-- 부서명 -->
+
+													<td class="num">
+
+															2026-10-07
+
+													</td>
+
+											<td class="num">10937</td>
+											<!-- 조회수 -->
+
+									</tr>
+
+									<tr>
+
+											<td>1705</td>
+											<!-- 번호 -->
+
+										<td class="txtL">
+
+												<a href="#" class="ellipsis icon" onclick="javascript:getDetailView('310976');return false;">
+
+												<span class="icoNew">NEW</span>
+
+											[토지임대부 사회주택] 옥류서원 입주자 모집 공고문
+
+												</a>
+
+										</td>
+										<!-- 제목 -->
+										<!-- 첨부파일 Start -->
+
+										<!-- 첨부파일 End -->
+
+											<td>
+												빈집사업부
+											</td>
+											<!-- 부서명 -->
+
+													<td class="num">
+
+															2026-10-07
+
+													</td>
+
+											<td class="num">1128</td>
+											<!-- 조회수 -->
+
+									</tr>
+
+									<tr>
+
+											<td>1704</td>
+											<!-- 번호 -->
+
+										<td class="txtL">
+
+												<a href="#" class="ellipsis " onclick="javascript:getDetailView('311005');return false;">
+
+											[토지지원 사회주택]에어스페이스 신림3호점_어울리 입주자 모집 공고
+
+												</a>
+
+										</td>
+										<!-- 제목 -->
+										<!-- 첨부파일 Start -->
+
+										<!-- 첨부파일 End -->
+
+											<td>
+												공공개발금융부
+											</td>
+											<!-- 부서명 -->
+
+													<td class="num">
+
+															2026-10-02
+
+													</td>
+
+											<td class="num">7501</td>
+											<!-- 조회수 -->
+
+									</tr>
+
+									<tr>
+
+											<td>1703</td>
+											<!-- 번호 -->
+
+										<td class="txtL">
+
+												<a href="#" class="ellipsis " onclick="javascript:getDetailView('310933');return false;">
+
+											2026년 1차 장기미임대 매입임대주택(2026.02.27.) 예비3차 당첨자 발표 및 계약안내
+
+												</a>
+
+										</td>
+										<!-- 제목 -->
+										<!-- 첨부파일 Start -->
+
+										<!-- 첨부파일 End -->
+
+											<td>
+												매입주택공급부
+											</td>
+											<!-- 부서명 -->
+
+													<td class="num">
+
+															2026-10-02
+
+													</td>
+
+											<td class="num">10576</td>
+											<!-- 조회수 -->
+
+									</tr>
+
+									<tr>
+
+											<td>1702</td>
+											<!-- 번호 -->
+
+										<td class="txtL">
+
+												<a href="#" class="ellipsis " onclick="javascript:getDetailView('311015');return false;">
+
+											2026년 1차 청년안심주택(2026. 3. 31. 공고) 예비1차 당첨자 발표
+
+												</a>
+
+										</td>
+										<!-- 제목 -->
+										<!-- 첨부파일 Start -->
+
+										<!-- 첨부파일 End -->
+
+											<td>
+												맞춤주택공급부
+											</td>
+											<!-- 부서명 -->
+
+													<td class="num">
+
+															2026-10-02
+
+													</td>
+
+											<td class="num">8241</td>
+											<!-- 조회수 -->
+
+									</tr>
+
+									<tr>
+
+											<td>1701</td>
+											<!-- 번호 -->
+
+										<td class="txtL">
+
+												<a href="#" class="ellipsis " onclick="javascript:getDetailView('310950');return false;">
+
+											[청년형] 특화형 매입임대주택(금천구) 입주자 모집 공고(운영기관 : 한지붕 협동조합)
+
+												</a>
+
+										</td>
+										<!-- 제목 -->
+										<!-- 첨부파일 Start -->
+
+										<!-- 첨부파일 End -->
+
+											<td>
+												매입주택공급부
+											</td>
+											<!-- 부서명 -->
+
+													<td class="num">
+
+															2026-10-02
+
+													</td>
+
+											<td class="num">9178</td>
+											<!-- 조회수 -->
+
+									</tr>
+
+									<tr>
+
+											<td>1700</td>
+											<!-- 번호 -->
+
+										<td class="txtL">
+
+												<a href="#" class="ellipsis " onclick="javascript:getDetailView('310937');return false;">
+
+											[당첨자발표] 2025년 하반기 청년 매입임대주택 우선공급 예비2차 계약대상자 발표 및 계약 안내
+
+												</a>
+
+										</td>
+										<!-- 제목 -->
+										<!-- 첨부파일 Start -->
+
+										<!-- 첨부파일 End -->
+
+											<td>
+												매입주택공급부
+											</td>
+											<!-- 부서명 -->
+
+													<td class="num">
+
+															2026-10-01
+
+													</td>
+
+											<td class="num">5826</td>
+											<!-- 조회수 -->
+
+									</tr>
+
+								</tbody>
+							</table>
+						</div>
+<footer>사이트 푸터</footer></body></html>

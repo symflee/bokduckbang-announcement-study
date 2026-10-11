@@ -5,12 +5,14 @@ import static com.toadzip.backend.ingest.pipeline.repository.IngestOperationLock
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
 import com.toadzip.backend.ingest.collection.domain.ShAnnouncementSnapshot;
 import com.toadzip.backend.ingest.collection.dto.ExternalDataCollectionReport;
+import com.toadzip.backend.ingest.collection.dto.ShAnnouncementContent;
 import com.toadzip.backend.ingest.collection.dto.ShAnnouncementPage.Entry;
 import com.toadzip.backend.ingest.collection.dto.ShAnnouncementPage;
 import com.toadzip.backend.ingest.collection.repository.ShAnnouncementExternalRepository;
 import com.toadzip.backend.ingest.collection.repository.ShAnnouncementStore;
 import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
 import com.toadzip.backend.ingest.collection.repository.external.ShAnnouncementListParser;
+import com.toadzip.backend.ingest.collection.repository.external.ShAnnouncementHtmlParser;
 import com.toadzip.backend.ingest.exception.exception.ExternalDataCallFailureException;
 import com.toadzip.backend.ingest.exception.exception.ExternalDataRetryInterruptedException;
 import com.toadzip.backend.ingest.exception.exception.IngestAlreadyRunningException;
@@ -38,6 +40,7 @@ public class ShAnnouncementCollectionService {
 
     private final ShAnnouncementExternalRepository externalRepository;
     private final ShAnnouncementListParser parser;
+    private final ShAnnouncementHtmlParser detailParser;
     private final ShAnnouncementStore store;
     private final IngestOperationLock executionLock;
     private final ExternalDataRetryExecutor retryExecutor;
@@ -48,6 +51,7 @@ public class ShAnnouncementCollectionService {
 
     public ShAnnouncementCollectionService(
             ShAnnouncementExternalRepository externalRepository, ShAnnouncementListParser parser,
+            ShAnnouncementHtmlParser detailParser,
             ShAnnouncementStore store, IngestOperationLock executionLock, ExternalDataRetryExecutor retryExecutor,
             ExternalDataFailureRecorder failureRecorder, Clock clock,
             @Value("${ingest.sh.lookback-days:90}") int lookbackDays,
@@ -58,6 +62,7 @@ public class ShAnnouncementCollectionService {
         }
         this.externalRepository = externalRepository;
         this.parser = parser;
+        this.detailParser = detailParser;
         this.store = store;
         this.executionLock = executionLock;
         this.retryExecutor = retryExecutor;
@@ -135,9 +140,10 @@ public class ShAnnouncementCollectionService {
 
     private void collectDetail(Entry entry, ShAnnouncementPage page, Progress progress) {
         String request = "seq=" + entry.seq();
-        String detailHtml;
+        ShAnnouncementContent content;
         try {
-            detailHtml = request(request, () -> externalRepository.fetchDetail(entry.seq()), progress);
+            String html = request(request, () -> externalRepository.fetchDetail(entry.seq()), progress);
+            content = detailParser.parse(html, entry.seq(), entry.title(), entry.registeredDate());
         }
         catch (ExternalDataCallFailureException | ExternalDataRequestException exception) {
             recordFailure(request, exception, progress);
@@ -145,9 +151,9 @@ public class ShAnnouncementCollectionService {
         }
         IngestExecutionScope.verifyHeld();
         IngestExecutionScope.checkStopRequested();
-        store.store(new ShAnnouncementSnapshot(entry.seq(), entry.title(), entry.department(), entry.registeredDate(),
+        store.store(new ShAnnouncementSnapshot(entry.seq(), content.title(), content.department(), content.registeredDate(),
                 ShAnnouncementExternalRepository.detailUrl(entry.seq()),
-                ShAnnouncementExternalRepository.LIST_URL + "&page=" + page.page(), page.rawHtml(), detailHtml));
+                ShAnnouncementExternalRepository.LIST_URL + "&page=" + page.page(), content.bodyText(), content.attachments()));
         failureRecorder.resolve(SOURCE, request);
         progress.stored++;
         progress.successful++;

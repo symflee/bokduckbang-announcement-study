@@ -26,7 +26,7 @@ class ShAnnouncementStoreTest {
     private EntityManager entityManager;
 
     @Test
-    void 재수집은_같은_게시글에_목록_정보와_원문과_수집_시각을_갱신한다() {
+    void 재수집은_같은_게시글에_정제_내용과_수집_시각을_갱신한다() {
         store(FIRST).store(snapshot("100", "제목", "첫 원문"));
         store(FIRST.plusSeconds(60)).store(snapshot("100", "정정 제목", "정정 원문"));
         entityManager.flush();
@@ -36,8 +36,8 @@ class ShAnnouncementStoreTest {
             assertThat(source.getSourceKey()).isEqualTo("SH:m_247:100");
             assertThat(source.getTitle()).isEqualTo("정정 제목");
             assertThat(source.getCollectedAt()).isEqualTo(FIRST.plusSeconds(60));
-            assertThat(source.getRawListHtml()).isEqualTo("목록 원문");
-            assertThat(source.getRawDetailHtml()).isEqualTo("정정 원문");
+            assertThat(source.getBodyText()).isEqualTo("정정 원문");
+            assertThat(source.getAttachments()).isEqualTo("[]");
         });
     }
 
@@ -58,6 +58,6 @@ class ShAnnouncementStoreTest {
     private ShAnnouncementSnapshot snapshot(String seq, String title, String raw) {
         return new ShAnnouncementSnapshot(seq, title, "공급부", LocalDate.parse("2026-10-02"),
                 ShAnnouncementExternalRepository.detailUrl(seq), ShAnnouncementExternalRepository.LIST_URL,
-                "목록 원문", raw);
+                raw, "[]");
     }
 }

@@ -65,8 +65,11 @@ const fieldLabels: Record<SourceCategory, Record<string, string>> = {
   LH_ANNOUNCEMENT_SUPPLY: {},
   SH_ANNOUNCEMENT: {
     seq: '게시글 식별자', title: '게시글 제목', department: '담당부서', registered_date: '등록일',
-    original_url: '게시글 원문 URL', list_url: '수집 목록 URL', raw_list_html: '목록 원문 HTML',
-    raw_detail_html: '상세 원문 HTML',
+    original_url: '게시글 원문 URL', list_url: '수집 목록 URL',
+    body_text: '본문 텍스트',
+    attachments: '첨부파일 메타데이터',
+    brdId: '첨부 게시판 코드', fileSeq: '첨부파일 식별자', fileSize: '파일 크기(바이트)',
+    fileTp: '첨부 유형 코드', oriFileNm: '첨부파일명', previewUrl: '첨부 미리보기 URL',
   },
 }
 
@@ -75,8 +78,9 @@ export const sourcePresentation: Record<SourceCategory, {
 }> = {
   SH_ANNOUNCEMENT: {
     provider: '서울주택도시개발공사 · SH 게시판',
-    documentationUrl: 'https://www.i-sh.co.kr/app/lay2/program/S48T561C563/www/brd/m_247/list.do?multi_itm_seq=2',
-    firstFields: ['title', 'registered_date', 'department', 'seq', 'original_url', 'raw_detail_html'],
+    documentationUrl: 'https://www.i-sh.co.kr/main/lay2/program/S1T294C295/www/brd/m_241/list.do?multi_itm_seqs=1,2,4,8,16,32,64,128,256,512,1024',
+    firstFields: ['title', 'registered_date', 'department', 'attachments',
+      'body_text', 'seq', 'original_url'],
   },
   MYHOME_COMPLEX: {
     provider: '국토교통부 · 마이홈', documentationUrl: 'https://www.data.go.kr/data/15110581/openapi.do',

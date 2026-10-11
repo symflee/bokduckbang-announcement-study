@@ -16,6 +16,7 @@ import com.toadzip.backend.ingest.collection.repository.ShAnnouncementExternalRe
 import com.toadzip.backend.ingest.collection.repository.ShAnnouncementStore;
 import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
 import com.toadzip.backend.ingest.collection.repository.external.ShAnnouncementListParser;
+import com.toadzip.backend.ingest.collection.repository.external.ShAnnouncementHtmlParser;
 import com.toadzip.backend.ingest.failure.service.ExternalDataFailureRecorder;
 import com.toadzip.backend.ingest.pipeline.repository.IngestOperationLock;
 import com.toadzip.backend.ingest.pipeline.service.DataPipelineStoppedException;
@@ -35,6 +36,9 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 @ExtendWith(MockitoExtension.class)
 class ShAnnouncementCollectionServiceTest {
+
+    private final ShAnnouncementHtmlParser detailParser =
+            new ShAnnouncementHtmlParser();
 
     @Mock
     private ShAnnouncementExternalRepository externalRepository;
@@ -56,9 +60,19 @@ class ShAnnouncementCollectionServiceTest {
     }
 
     @Test
-    void 상세_본문과_첨부를_해석하지_않고_목록_정보와_HTML_원문을_저장한다() {
+    void doesNotOverwriteStoredSourceWhenRequiredDetailRegionIsMissing() {
+        when(externalRepository.fetchList(1)).thenReturn(list(1, 1, 100));
+        when(externalRepository.fetchDetail("100")).thenReturn("<html>오류 페이지</html>");
+        var report = service.collect();
+        assertThat(report.failedRequestCount()).isOne();
+        assertThat(report.storedRowCount()).isZero();
+        verify(store, never()).store(any());
+    }
+
+    @Test
+    void 상세_본문과_첨부를_정제해_저장한다() {
         String listHtml = list(1, 1, 100);
-        String detailHtml = "<!doctype html><html><body><article>새 상세 구조</article></body></html>";
+        String detailHtml = detail("100");
         when(externalRepository.fetchList(1)).thenReturn(listHtml);
         when(externalRepository.fetchDetail("100")).thenReturn(detailHtml);
 
@@ -68,7 +82,7 @@ class ShAnnouncementCollectionServiceTest {
         assertThat(report.failedRequestCount()).isZero();
         verify(store).store(org.mockito.ArgumentMatchers.argThat(snapshot ->
                 snapshot.seq().equals("100") && snapshot.title().equals("공고 100")
-                        && snapshot.rawListHtml().equals(listHtml) && snapshot.rawDetailHtml().equals(detailHtml)));
+                        && snapshot.bodyText().equals("공고 100 원문") && snapshot.attachments().equals("[]")));
     }
 
     @Test
@@ -136,7 +150,7 @@ class ShAnnouncementCollectionServiceTest {
         String first = list(1, 11).replace("2026-01-01", "2026-07-06");
         when(externalRepository.fetchList(1)).thenReturn(first);
         when(externalRepository.fetchList(2)).thenReturn(list(2, 11, 110).replace("2026-10-02", "2026-07-07"));
-        when(externalRepository.fetchDetail("110")).thenReturn(detail("110"));
+        when(externalRepository.fetchDetail("110")).thenReturn(detail("110").replace("2026-10-02", "2026-07-07"));
 
         var report = service.collect();
 
@@ -182,7 +196,7 @@ class ShAnnouncementCollectionServiceTest {
 
     private ShAnnouncementCollectionService service(int days) {
         var metrics = new SimpleMeterRegistry();
-        return new ShAnnouncementCollectionService(externalRepository, new ShAnnouncementListParser(), store,
+        return new ShAnnouncementCollectionService(externalRepository, new ShAnnouncementListParser(), detailParser, store,
                 lock, new ExternalDataRetryExecutor(Duration.ZERO, metrics), failures,
                 Clock.fixed(Instant.parse("2026-10-05T00:00:00Z"), ZoneOffset.UTC), days, Duration.ZERO);
     }
@@ -206,6 +220,11 @@ class ShAnnouncementCollectionServiceTest {
     }
 
     private String detail(String seq) {
-        return "<html><body>공고 " + seq + " 원문</body></html>";
+        return "<html><nav>메뉴</nav><input name='multi_itm_seq' value='2'>"
+                + "<div class='detailTable gs0401Table firgs0401Table'><table><thead><tr><th>공고 "
+                + seq + "</th></tr></thead><tbody><tr><td><ul><li><strong>등록일:</strong>2026-10-02</li></ul></td></tr>"
+                + "<tr><td class='cont'><p>공고 " + seq + " 원문</p></td></tr></tbody></table></div>"
+                + "<ul class='personInfo'><li><span>담당부서</span>공급부</li></ul>"
+                + "<script>initParam.downList = [];</script><footer>푸터</footer></html>";
     }
 }

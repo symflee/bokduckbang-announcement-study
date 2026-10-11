@@ -7,7 +7,6 @@ import static org.mockito.Mockito.doReturn;
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
 import com.toadzip.backend.ingest.collection.repository.ShAnnouncementExternalRepository;
 import com.toadzip.backend.ingest.collection.repository.ShAnnouncementSourceRepository;
-import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
 import com.toadzip.backend.ingest.failure.domain.ExternalDataFailureStatus;
 import com.toadzip.backend.ingest.failure.repository.ExternalDataCollectionFailureRepository;
 import java.io.IOException;
@@ -43,8 +42,8 @@ class ShAnnouncementCollectionIntegrationTest {
     }
 
     @Test
-    void collectionCommitsRawOnlyAndBadResponsePreservesItUntilSuccessfulRetryResolvesFailure() throws IOException {
-        String detail = "<!doctype html><html><body><article>해석하지 않은 상세 원문</article></body></html>";
+    void collectionStoresContentAndParsingFailurePreservesItUntilSuccessfulRetry() throws IOException {
+        String detail = fixture("detail-310653.html");
         when(externalRepository.fetchList(1)).thenReturn(singlePostList());
         when(externalRepository.fetchDetail("310653")).thenReturn(detail);
         long announcementCount = count("announcements");
@@ -53,13 +52,14 @@ class ShAnnouncementCollectionIntegrationTest {
         assertThat(service.collect().storedRowCount()).isOne();
         var first = sources.findBySourceKey("SH:m_247:310653").orElseThrow();
         Long sourceId = first.getId();
-        assertThat(first.getRawDetailHtml()).isEqualTo(detail);
+        assertThat(first.getBodyText()).contains("신혼", "신생아").doesNotContain("<table", "\t", "\r");
+        assertThat(first.getAttachments()).contains("fileSeq", "공고문");
 
-        when(externalRepository.fetchDetail("310653"))
-                .thenThrow(new ExternalDataRequestException("SH 요청 실패: HTTP 404"));
+        when(externalRepository.fetchDetail("310653")).thenReturn("<html>변경된 구조</html>");
         assertThat(service.collect().failedRequestCount()).isOne();
         var preserved = sources.findBySourceKey("SH:m_247:310653").orElseThrow();
-        assertThat(preserved.getRawDetailHtml()).isEqualTo(detail);
+        assertThat(preserved.getBodyText()).isEqualTo(first.getBodyText());
+        assertThat(preserved.getAttachments()).isEqualTo(first.getAttachments());
         assertThat(preserved.getCollectedAt()).isEqualTo(first.getCollectedAt());
         assertThat(failures.findAllBySourceAndRequestDescriptionAndStatus(
                 ExternalDataSource.SH_ANNOUNCEMENT, "seq=310653", ExternalDataFailureStatus.PENDING)).hasSize(1);
@@ -68,7 +68,7 @@ class ShAnnouncementCollectionIntegrationTest {
         assertThat(service.collect().failedRequestCount()).isZero();
         var refreshed = sources.findBySourceKey("SH:m_247:310653").orElseThrow();
         assertThat(refreshed.getId()).isEqualTo(sourceId);
-        assertThat(refreshed.getRawDetailHtml()).isEqualTo(detail);
+        assertThat(refreshed.getBodyText()).isEqualTo(first.getBodyText());
         assertThat(failures.findAllBySourceAndRequestDescriptionAndStatus(
                 ExternalDataSource.SH_ANNOUNCEMENT, "seq=310653", ExternalDataFailureStatus.RESOLVED)).hasSize(1);
         assertThat(count("announcements")).isEqualTo(announcementCount);
@@ -81,7 +81,11 @@ class ShAnnouncementCollectionIntegrationTest {
 
     private String singlePostList() throws IOException {
         var document = Jsoup.parse(fixture("list.html"));
-        String row = document.select("#listTb > table > tbody > tr").get(5).outerHtml();
+        var rowElement = document.select("#listTb > table > tbody > tr").get(5);
+        var detail = Jsoup.parse(fixture("detail-310653.html"));
+        rowElement.selectFirst("td.txtL a").text(detail.selectFirst(".firgs0401Table > table > thead th").text());
+        rowElement.select("td").get(3).text("2026-09-30");
+        String row = rowElement.outerHtml();
         return "<input name='multi_itm_seq' value='2'><div class='topTxt'><p>총 <strong>1</strong> 건 [1/1페이지]"
                 + "</p></div><div id='listTb'><table><tbody>" + row + "</tbody></table></div>";
     }

@@ -341,7 +341,7 @@ export function DataPipelineControl({ domain, externalBusy = false, onBusyChange
           <div className="data-pipeline-group-heading">
             <div>
               <h3 id="sh-pipelines">SH 공고 원천</h3>
-              <p>주택임대 게시판의 목록 정보와 상세 HTML 원문을 수집합니다. API 키 없이 실행합니다.</p>
+              <p>SH의 ‘모집’ 검색 결과에서 제목·본문 텍스트·첨부 정보를 추출해 저장합니다. API 키 없이 실행합니다.</p>
             </div>
             <button type="button" disabled={isAnyPipelineRunning}
               onClick={() => handleRun('SH_ANNOUNCEMENT_COLLECTION')}>

@@ -2,6 +2,7 @@ package com.toadzip.backend.ingest.collection.repository.external;
 
 import com.toadzip.backend.ingest.collection.dto.ShAnnouncementPage.Entry;
 import com.toadzip.backend.ingest.collection.dto.ShAnnouncementPage;
+import com.toadzip.backend.ingest.collection.repository.ShAnnouncementExternalRepository;
 import java.time.DateTimeException;
 import java.time.LocalDate;
 import java.util.ArrayList;
@@ -22,12 +23,15 @@ public class ShAnnouncementListParser {
     public ShAnnouncementPage parseList(String html, int requestedPage) {
         try {
             Document document = document(html);
-            String summary = required(document, ".topTxt > p").text();
+            boolean mainBoard = document.selectFirst("#mainform .mentcount") != null;
+            String summarySelector = mainBoard ? "#mainform > .topTxt > .mentcount" : ".topTxt > p";
+            Element summaryElement = required(document, summarySelector);
+            String summary = summaryElement.text();
             var pageMatch = PAGE.matcher(summary);
             require(pageMatch.find(), "SH 목록 페이지 정보를 확인할 수 없습니다.");
             int page = Integer.parseInt(pageMatch.group(1));
             int lastPage = Integer.parseInt(pageMatch.group(2));
-            int total = Integer.parseInt(required(document, ".topTxt > p > strong").text().replace(",", ""));
+            int total = Integer.parseInt(required(summaryElement, "strong").text().replace(",", ""));
             require(page == requestedPage && page >= 1 && total >= 0, "SH 목록이 요청과 다른 페이지입니다.");
             require(lastPage == Math.max(1, (total + 9) / 10), "SH 목록의 전체 건수와 페이지 수가 다릅니다.");
             var rows = required(document, "#listTb > table > tbody").select("> tr");
@@ -42,7 +46,7 @@ public class ShAnnouncementListParser {
             require(entries.size() == expected, "SH 목록의 전체 건수와 행 수가 다릅니다.");
             require(new HashSet<>(entries.stream().map(Entry::seq).toList()).size() == entries.size(),
                     "SH 목록에 중복 게시글 식별자가 있습니다.");
-            return new ShAnnouncementPage(page, total, List.copyOf(entries), html);
+            return new ShAnnouncementPage(page, total, List.copyOf(entries));
         }
         catch (DateTimeException | IllegalArgumentException exception) {
             throw new ExternalDataRequestException("SH 목록의 숫자 또는 날짜 형식이 올바르지 않습니다.", exception);
@@ -63,8 +67,17 @@ public class ShAnnouncementListParser {
     private Document document(String html) {
         require(html != null && !html.isBlank(), "SH HTML 응답이 비어 있습니다.");
         Document document = Jsoup.parse(html);
-        require(required(document, "input[name=multi_itm_seq]").attr("value").equals("2"),
-                "SH 주택임대 게시판 응답이 아닙니다.");
+        if (document.selectFirst("#mainform .mentcount") != null) {
+            require(required(document, "#mainform input[name=itm_seq_1]").attr("value").equals("1")
+                    && required(document, "#mainform input[name=srchWord]").attr("value").equals("모집")
+                    && required(document, "#mainform input[name=multi_itm_seqsStr]").attr("value")
+                            .equals(ShAnnouncementExternalRepository.BOARD_TYPES),
+                    "SH 모집 검색 조건이 응답과 다릅니다.");
+        }
+        else {
+            require(required(document, "input[name=multi_itm_seq]").attr("value").equals("2"),
+                    "SH 주택임대 게시판 응답이 아닙니다.");
+        }
         return document;
     }
 

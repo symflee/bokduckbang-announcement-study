@@ -4,6 +4,8 @@ import com.toadzip.backend.ingest.collection.lh.configuration.LhAnnouncementClie
 import com.toadzip.backend.ingest.collection.lh.repository.external.LhResponseStatusValidator;
 import com.toadzip.backend.ingest.collection.repository.external.DataGoKrOpenApiClient;
 import com.toadzip.backend.ingest.collection.repository.external.MyHomeResponseStatusValidator;
+import java.net.CookieManager;
+import java.net.CookiePolicy;
 import java.net.http.HttpClient;
 import java.time.Duration;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -21,6 +23,7 @@ public class ExternalDataIngestConfiguration {
     @Bean
     RestClient shAnnouncementRestClient() {
         HttpClient httpClient = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10))
+                .cookieHandler(new CookieManager(null, CookiePolicy.ACCEPT_ORIGINAL_SERVER))
                 .followRedirects(HttpClient.Redirect.NEVER).build();
         JdkClientHttpRequestFactory factory = new JdkClientHttpRequestFactory(httpClient);
         factory.setReadTimeout(Duration.ofSeconds(30));

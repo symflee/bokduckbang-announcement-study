@@ -14,7 +14,7 @@ class ShAnnouncementListParserTest {
     private final ShAnnouncementListParser parser = new ShAnnouncementListParser();
 
     @Test
-    void 목록의_표시번호가_아닌_게시글_ID와_수집_대상_정보를_읽고_원문을_보존한다() throws IOException {
+    void 목록의_표시번호가_아닌_게시글_ID와_수집_대상_정보를_읽는다() throws IOException {
         String html = fixture();
 
         var page = parser.parseList(html, 1);
@@ -26,7 +26,6 @@ class ShAnnouncementListParserTest {
         assertThat(page.entries().getFirst().title()).isEqualTo("사회주택 입주자 모집");
         assertThat(page.entries().getFirst().department()).isEqualTo("공급부");
         assertThat(page.entries().getFirst().registeredDate()).isEqualTo(LocalDate.of(2026, 10, 2));
-        assertThat(page.rawHtml()).isEqualTo(html);
         assertThat(page.totalCount()).isEqualTo(1705);
     }
 
@@ -87,6 +86,22 @@ class ShAnnouncementListParserTest {
         String badDate = fixture().replace("2026-10-02", "잘못된 날짜");
         assertThatThrownBy(() -> parser.parseList(badDate, 1))
                 .isInstanceOf(ExternalDataRequestException.class);
+    }
+
+    @Test
+    void mainSearchUsesNoticeCountRatherThanPostalCodeSearchCount() throws IOException {
+        String html;
+        try (var input = getClass().getResourceAsStream("/ingest/sh/list-main-search.html")) {
+            html = new String(input.readAllBytes(), StandardCharsets.UTF_8);
+        }
+        var page = parser.parseList(html, 1);
+        assertThat(page.totalCount()).isEqualTo(452);
+        assertThat(page.entries()).hasSize(10);
+        assertThat(page.entries().getFirst().seq()).isEqualTo("311087");
+        assertThat(page.entries().getFirst().registeredDate()).isEqualTo(LocalDate.of(2026, 10, 8));
+        assertThat(page.entries()).extracting(entry -> entry.seq()).contains("310391");
+        assertThatThrownBy(() -> parser.parseList(html.replace("value=\"모집\"", "value=\"다른검색\""), 1))
+                .isInstanceOf(ExternalDataRequestException.class).hasMessageContaining("검색 조건");
     }
 
     private String fixture() throws IOException {

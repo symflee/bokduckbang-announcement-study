@@ -3,6 +3,8 @@ package com.toadzip.backend.ingest.collection.repository;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.header;
+import static org.springframework.test.web.client.match.MockRestRequestMatchers.method;
+import static org.springframework.test.web.client.match.MockRestRequestMatchers.content;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withStatus;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
@@ -10,6 +12,8 @@ import static org.springframework.test.web.client.response.MockRestResponseCreat
 import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.HttpMethod;
+import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.client.MockRestServiceServer;
 import org.springframework.web.client.RestClient;
@@ -22,11 +26,36 @@ class ShAnnouncementExternalRepositoryTest {
 
     @Test
     void fetchesOnlyFixedOfficialEndpointAndKeepsUtf8Html() {
-        server.expect(requestTo(ShAnnouncementExternalRepository.LIST_URL + "&page=2"))
+        var expected = new LinkedMultiValueMap<String, String>();
+        for (String name : new String[]{"seq", "multi_itm_seq", "multi_itm_seqsStr", "isRecrnoti", "splyTy", "srchFr", "srchTo"}) {
+            expected.add(name, "");
+        }
+        expected.add("page", "2");
+        expected.add("itm_seq_1", "1");
+        expected.add("notType1", "0");
+        expected.add("annType1", "on");
+        expected.add("srchTp", "0");
+        expected.add("srchWord", "모집");
+        server.expect(requestTo(ShAnnouncementExternalRepository.LIST_URL))
+                .andExpect(method(HttpMethod.POST))
+                .andExpect(content().formData(expected))
+                .andExpect(header("Referer", ShAnnouncementExternalRepository.LIST_URL))
                 .andExpect(header("Accept", "text/html"))
                 .andRespond(withSuccess("<html>SH 공고</html>", MediaType.TEXT_HTML));
 
         assertThat(repository.fetchList(2)).isEqualTo("<html>SH 공고</html>");
+        server.verify();
+    }
+
+    @Test
+    void establishesSessionBeforeFirstPageSearch() {
+        server.expect(requestTo(ShAnnouncementExternalRepository.LIST_URL))
+                .andExpect(method(HttpMethod.GET))
+                .andRespond(withSuccess("initial page", MediaType.TEXT_HTML));
+        server.expect(requestTo(ShAnnouncementExternalRepository.LIST_URL))
+                .andExpect(method(HttpMethod.POST))
+                .andRespond(withSuccess("search page", MediaType.TEXT_HTML));
+        assertThat(repository.fetchList(1)).isEqualTo("search page");
         server.verify();
     }
 
