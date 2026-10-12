@@ -1017,6 +1017,39 @@ describe('NaverMap', () => {
     }))
   })
 
+  it.each(['drag', 'wheel', 'pointer', 'keyboard', 'zoom'])('초기화 대기 중 %s 조작은 보류한 위치 이동을 취소하고 새 요청은 적용한다', async input => {
+    const fakeSdk = createFakeSdk()
+    const onViewportChange = vi.fn()
+    loadNaverMapsSdkMock.mockResolvedValue(fakeSdk.maps)
+    const cameraTarget = {
+      latitude: 37.51, longitude: 127.02, screenOffset: { x: 200, y: -60 }, zoom: 14,
+    }
+    const { container, rerender } = render(
+      <NaverMap representation="INDIVIDUAL" markers={[]} cameraRequestId={1} cameraTarget={cameraTarget} onViewportChange={onViewportChange} />,
+    )
+    await screen.findByRole('button', { name: '지도 확대' })
+    const surface = container.querySelector('.map-surface')
+    if (!surface) throw new Error('지도 영역 없음')
+    act(() => {
+      if (input === 'drag') fakeSdk.emitDragStart()
+      if (input === 'wheel') fireEvent.wheel(surface)
+      if (input === 'pointer') fireEvent.pointerDown(surface)
+      if (input === 'keyboard') fireEvent.keyDown(surface, { key: 'ArrowUp' })
+      if (input === 'zoom') fireEvent.click(screen.getByRole('button', { name: '지도 확대' }))
+      fakeSdk.setCurrentCenter(37.6, 127.1)
+      fakeSdk.emitIdle()
+    })
+    expect(fakeSdk.morphMap).not.toHaveBeenCalled()
+    expect(fakeSdk.panToMap).not.toHaveBeenCalled()
+    expect(onViewportChange).toHaveBeenLastCalledWith(expect.objectContaining({
+      center: { latitude: 37.6, longitude: 127.1 },
+    }))
+    rerender(
+      <NaverMap representation="INDIVIDUAL" markers={[]} cameraRequestId={2} cameraTarget={cameraTarget} />,
+    )
+    expect(fakeSdk.morphMap).toHaveBeenCalledOnce()
+  })
+
   it('이미 offset이 반영된 위치를 다시 요청하면 현재 viewport를 즉시 알린다', async () => {
     const fakeSdk = createFakeSdk()
     const onViewportChange = vi.fn()
