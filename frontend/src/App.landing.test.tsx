@@ -59,22 +59,13 @@ it('캠페인 파라미터나 사용법 앵커로 방문해도 랜딩을 표시�
   expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('공공주택 찾기,')
 })
 
-it('로그인 직후 루트로 복귀하면 지도를 열고 다음 일반 방문에는 랜딩을 표시한다', () => {
-  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(null, { status: 401 })))
+it('일반 루트 방문은 예전 로그인 복귀 표식이 남아 있어도 랜딩을 표시한다', () => {
   sessionStorage.setItem('toadzip:login-return-until', String(Date.now() + 60_000))
   open()
-  expect(screen.getByLabelText('현재 주소')).toHaveTextContent('/explore')
-  fireEvent.click(screen.getByRole('link', { name: '공공주택 복덕방 홈' }))
   expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('공공주택 찾기,')
 })
 
-it.each(['1', 'invalid', 'Infinity', String(Date.now() + 60 * 60 * 1000)])('만료되거나 잘못된 로그인 복귀 표식 %s는 랜딩을 건너뛰지 않는다', (value) => {
-  sessionStorage.setItem('toadzip:login-return-until', value)
-  open()
-  expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('공공주택 찾기,')
-})
-
-it.each(['카카오톡으로 로그인', 'Google로 로그인'])('%s 선택 후 인증 서비스에서 루트로 돌아오면 탐색을 이어간다', async (provider) => {
+it.each(['카카오톡으로 로그인', 'Google로 로그인'])('%s 선택 후 서버가 지정한 탐색 주소로 복귀한다', async (provider) => {
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(null, { status: 401 })))
   const { unmount } = open('/explore')
   fireEvent.click(await screen.findByRole('button', { name: '로그인' }))
@@ -82,7 +73,7 @@ it.each(['카카오톡으로 로그인', 'Google로 로그인'])('%s 선택 후 
   link.addEventListener('click', (event) => event.preventDefault(), { once: true })
   fireEvent.click(link)
   unmount()
-  open('/')
+  open('/explore')
   expect(screen.getByLabelText('현재 주소')).toHaveTextContent('/explore')
   expect(sessionStorage.getItem('toadzip:login-return-until')).toBeNull()
 })
@@ -96,10 +87,24 @@ it('저장소 접근이 차단되어도 랜딩에서 탐색을 시작할 수 있
   expect(screen.getByRole('heading', { name: '공공임대주택 지도' })).toBeVisible()
 })
 
-it('로그인 실패로 복귀해도 복귀 표식은 한 번만 소비한다', () => {
+it.each(['/explore', '/?login=failed'])('저장소가 차단되어도 로그인 복귀 주소 %s에서 탐색할 수 있다', path => {
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(null, { status: 401 })))
-  sessionStorage.setItem('toadzip:login-return-until', String(Date.now() + 60_000))
-  open('/?login=failed')
-  expect(screen.getByLabelText('현재 주소')).toHaveTextContent('/explore?login=failed')
-  expect(sessionStorage.getItem('toadzip:login-return-until')).toBeNull()
+  vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => { throw new Error('blocked') })
+  vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('blocked') })
+  open(path)
+  expect(screen.getByLabelText('현재 주소').textContent).toBe(path === '/explore' ? '/explore' : '/explore?login=failed')
+})
+
+
+it.each(['/explore/', '/EXPLORE///', '/%65xplore', '/explor%65/'])('탐색 주소 %s를 정규화하면서 공유 조건과 앵커를 보존한다', (path) => {
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(null, { status: 401 })))
+  open(`${path}?complexId=7&mapZoom=12#detail`)
+  expect(screen.getByLabelText('현재 주소').textContent).toBe('/explore?complexId=7&mapZoom=12#detail')
+})
+
+it('탐색 주소 정규화는 뒤로가기에 중간 주소를 남기지 않는다', () => {
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(null, { status: 401 })))
+  render(<MemoryRouter initialEntries={['/', '/explore/?complexId=7']}><App /><NavigationProbe /></MemoryRouter>)
+  fireEvent.click(screen.getByRole('button', { name: '뒤로' }))
+  expect(screen.getByLabelText('현재 주소').textContent).toBe('/')
 })

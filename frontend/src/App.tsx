@@ -1,7 +1,7 @@
 import { FailureReviewPage } from './admin/ingest/FailureReviewPage'
 import { AnnouncementRegistrationV2Page } from './admin/ingest/AnnouncementRegistrationV2Page'
 import { SourceDataPage } from './admin/ingest/SourceDataPage'
-import { Link, Navigate, Route, Routes, useLocation } from 'react-router'
+import { Link, Navigate, Route, Routes, matchRoutes, useLocation } from 'react-router'
 import { AdminAuthProvider } from './admin/auth/AdminAuthProvider'
 import { LocationDataPage } from './admin/ingest/LocationDataPage'
 import { ManagementWorkspace } from './admin/management/ManagementWorkspace'
@@ -21,12 +21,9 @@ import { FeedbackPage } from './feedback/FeedbackPage'
 import { FeedbackListPage } from './admin/feedback/FeedbackListPage'
 import { PrivacyBoundary, PrivacyMenu, PrivacyPolicyPage, PrivacySettingsPage } from './privacy/Privacy'
 import { ProductAnalyticsBoundary } from './analytics/ProductAnalyticsBoundary'
-import { useEffect, useState } from 'react'
 import { LandingPage } from './landing/LandingPage'
-import { clearLoginReturn, hasPendingLoginReturn } from './user/auth/loginReturn'
 
 function LandingEntry() {
-  const [returningFromLogin] = useState(hasPendingLoginReturn)
   const { search, hash } = useLocation()
   const params = new URLSearchParams(search)
   // Keep existing detail, filter, map and authentication links usable.
@@ -34,13 +31,12 @@ function LandingEntry() {
     /^(complex|announcement|map)/.test(key)
     || key === 'boundaryRegionCode' || key === 'login' || key === 'tab' || key === 'inbox',
   )
-  return hasExplorerState || returningFromLogin
+  return hasExplorerState
     ? <Navigate to={{ pathname: '/explore', search, hash }} replace />
     : <LandingPage />
 }
 
 function Home() {
-  useEffect(() => { clearLoginReturn() }, [])
   return (
     <NotificationInterestProvider>
       <div className="app-shell">
@@ -98,7 +94,12 @@ function AdminRoutes() {
 }
 
 export default function App() {
-  const { pathname } = useLocation()
+  const { pathname, search, hash, state } = useLocation()
+  // Use the same matching rules as Routes, including encoded paths, before
+  // mounting privacy and analytics on the canonical public path.
+  if (pathname !== '/explore' && matchRoutes([{ path: '/explore' }], { pathname })) {
+    return <Navigate to={{ pathname: '/explore', search, hash }} state={state} replace />
+  }
   return (
     <>
     {pathname !== '/' && <PrivacyBoundary />}
