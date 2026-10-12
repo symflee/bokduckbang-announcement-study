@@ -1,0 +1,3021 @@
+{
+  "id": null,
+  "uid": "toadzip-api-load-test",
+  "title": "Toadzip API · 부하테스트",
+  "description": "환경별 API 요청량·지연·오류, DB·JVM 병목과 요청 로그를 연결합니다.",
+  "tags": [
+    "toadzip",
+    "backend",
+    "load-test"
+  ],
+  "timezone": "Asia/Seoul",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": true,
+  "refresh": "15s",
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
+  "timepicker": {
+    "refresh_intervals": [
+      "15s",
+      "30s",
+      "1m",
+      "5m"
+    ]
+  },
+  "annotations": {
+    "list": []
+  },
+  "templating": {
+    "list": [
+      {
+        "type": "custom",
+        "name": "environment",
+        "label": "환경",
+        "query": "dev,prod",
+        "current": {
+          "text": "dev",
+          "value": "dev"
+        },
+        "options": [
+          {
+            "text": "dev",
+            "value": "dev",
+            "selected": true
+          },
+          {
+            "text": "prod",
+            "value": "prod",
+            "selected": false
+          }
+        ],
+        "includeAll": false,
+        "multi": false,
+        "hide": 0
+      },
+      {
+        "type": "custom",
+        "name": "scope",
+        "label": "API 범위",
+        "query": "사용자 API : /api/v[0-9]+/.*|/api/auth/.*,관리자 API : /api/admin/.*,모든 API : /api/.*",
+        "current": {
+          "text": "사용자 API",
+          "value": "/api/v[0-9]+/.*|/api/auth/.*"
+        },
+        "includeAll": false,
+        "multi": false,
+        "hide": 0
+      },
+      {
+        "type": "query",
+        "name": "method",
+        "label": "메서드",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "query": {
+          "query": "label_values(http_server_requests_seconds_count{job=\"backend\", environment=\"$environment\", uri=~\"${scope:raw}\"}, method)",
+          "refId": "Variable-method"
+        },
+        "definition": "",
+        "refresh": 1,
+        "includeAll": true,
+        "allValue": ".*",
+        "multi": false,
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        },
+        "sort": 1
+      },
+      {
+        "type": "query",
+        "name": "api",
+        "label": "API",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "query": {
+          "query": "label_values(http_server_requests_seconds_count{job=\"backend\", environment=\"$environment\", uri=~\"${scope:raw}\", method=~\"${method:regex}\"}, uri)",
+          "refId": "Variable-api"
+        },
+        "definition": "",
+        "refresh": 1,
+        "includeAll": true,
+        "allValue": ".*",
+        "multi": false,
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        },
+        "sort": 1
+      },
+      {
+        "type": "query",
+        "name": "pool",
+        "label": "DB 풀",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "query": {
+          "query": "label_values(hikaricp_connections_max{job=\"backend\", environment=\"$environment\"}, pool)",
+          "refId": "Variable-pool"
+        },
+        "refresh": 1,
+        "includeAll": true,
+        "allValue": ".*",
+        "multi": false,
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        },
+        "sort": 1
+      },
+      {
+        "type": "query",
+        "name": "db_host",
+        "label": "공유 DB 호스트",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "query": {
+          "query": "label_values(up{job=\"db-host\"}, instance)",
+          "refId": "Variable-db-host"
+        },
+        "refresh": 1,
+        "includeAll": false,
+        "multi": false,
+        "current": {
+          "text": "",
+          "value": ""
+        },
+        "sort": 1
+      },
+      {
+        "type": "custom",
+        "name": "slow_ms",
+        "label": "느린 요청 검색 · ms",
+        "query": "250,500,1000,2000",
+        "current": {
+          "text": "1000",
+          "value": "1000"
+        },
+        "includeAll": false,
+        "multi": false
+      },
+      {
+        "type": "datasource",
+        "name": "logs",
+        "label": "로그 데이터 소스",
+        "query": "loki",
+        "refresh": 1,
+        "hide": 0,
+        "current": {}
+      }
+    ]
+  },
+  "links": [],
+  "panels": [
+    {
+      "id": 1,
+      "title": "어떻게 읽나요?",
+      "type": "text",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 3
+      },
+      "description": "",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "—",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {},
+          "mappings": [
+            {
+              "type": "special",
+              "options": {
+                "match": "nan",
+                "result": {
+                  "text": "—",
+                  "color": "gray"
+                }
+              }
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "**환경 선택 → API 비교 → DB·JVM → 요청 로그 → traceId로 원인 조회**\n\np95·p99는 최근 집계 구간의 지연입니다. 요청 수·오류 건수는 선택한 전체 기간입니다. `—`는 요청 또는 데이터가 없어 계산할 수 없는 상태입니다. 느린 요청 기준은 검색 조건이며 성능 목표가 아닙니다."
+      }
+    },
+    {
+      "id": 2,
+      "title": "1 · 선택한 환경과 API의 현황",
+      "type": "row",
+      "gridPos": {
+        "x": 0,
+        "y": 3,
+        "w": 24,
+        "h": 1
+      },
+      "description": "",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "—",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {},
+          "mappings": [
+            {
+              "type": "special",
+              "options": {
+                "match": "nan",
+                "result": {
+                  "text": "—",
+                  "color": "gray"
+                }
+              }
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {},
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 3,
+      "title": "메트릭 수집 상태",
+      "type": "stat",
+      "gridPos": {
+        "x": 0,
+        "y": 4,
+        "w": 4,
+        "h": 4
+      },
+      "description": "1은 Prometheus 수집 성공입니다. API·DB 정상 동작을 보장하지 않습니다.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "min(up{job=\"backend\", environment=\"$environment\"})",
+          "legendFormat": "",
+          "editorMode": "code",
+          "range": false,
+          "instant": true,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "format": "table"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "—",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {},
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "수집 실패",
+                  "color": "red"
+                },
+                "1": {
+                  "text": "수집 정상",
+                  "color": "green"
+                }
+              }
+            },
+            {
+              "type": "special",
+              "options": {
+                "match": "nan",
+                "result": {
+                  "text": "—",
+                  "color": "gray"
+                }
+              }
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      }
+    },
+    {
+      "id": 4,
+      "title": "요청량 · RPS",
+      "type": "stat",
+      "gridPos": {
+        "x": 4,
+        "y": 4,
+        "w": 4,
+        "h": 4
+      },
+      "description": "",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum (rate(http_server_requests_seconds_count{job=\"backend\", environment=\"$environment\", uri=~\"${scope:raw}\", uri=~\"${api}\", method=~\"${method:regex}\", uri!~\"/api/health.*\"}[$__rate_interval]))",
+          "legendFormat": "",
+          "editorMode": "code",
+          "range": false,
+          "instant": true,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "format": "table"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "noValue": "—",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "blue"
+          },
+          "custom": {},
+          "mappings": [
+            {
+              "type": "special",
+              "options": {
+                "match": "nan",
+                "result": {
+                  "text": "—",
+                  "color": "gray"
+                }
+              }
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      }
+    },
+    {
+      "id": 5,
+      "title": "응답시간 · p95",
+      "type": "stat",
+      "gridPos": {
+        "x": 8,
+        "y": 4,
+        "w": 4,
+        "h": 4
+      },
+      "description": "",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(http_server_requests_seconds_bucket{job=\"backend\", environment=\"$environment\", uri=~\"${scope:raw}\", uri=~\"${api}\", method=~\"${method:regex}\", uri!~\"/api/health.*\"}[$__rate_interval])))",
+          "legendFormat": "",
+          "editorMode": "code",
+          "range": false,
+          "instant": true,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "format": "table"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "noValue": "—",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "blue"
+          },
+          "custom": {},
+          "mappings": [
+            {
+              "type": "special",
+              "options": {
+                "match": "nan",
+                "result": {
+                  "text": "—",
+                  "color": "gray"
+                }
+              }
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      }
+    },
+    {
+      "id": 6,
+      "title": "응답시간 · p99",
+      "type": "stat",
+      "gridPos": {
+        "x": 12,
+        "y": 4,
+        "w": 4,
+        "h": 4
+      },
+      "description": "",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(http_server_requests_seconds_bucket{job=\"backend\", environment=\"$environment\", uri=~\"${scope:raw}\", uri=~\"${api}\", method=~\"${method:regex}\", uri!~\"/api/health.*\"}[$__rate_interval])))",
+          "legendFormat": "",
+          "editorMode": "code",
+          "range": false,
+          "instant": true,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "format": "table"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "noValue": "—",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "blue"
+          },
+          "custom": {},
+          "mappings": [
+            {
+              "type": "special",
+              "options": {
+                "match": "nan",
+                "result": {
+                  "text": "—",
+                  "color": "gray"
+                }
+              }
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      }
+    },
+    {
+      "id": 7,
+      "title": "5xx · 선택 기간",
+      "type": "stat",
+      "gridPos": {
+        "x": 16,
+        "y": 4,
+        "w": 4,
+        "h": 4
+      },
+      "description": "선택한 전체 기간의 서버 오류 추정 건수. increase()의 보간 때문에 소수일 수 있습니다.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "(sum (increase(http_server_requests_seconds_count{job=\"backend\", environment=\"$environment\", uri=~\"${scope:raw}\", uri=~\"${api}\", method=~\"${method:regex}\", uri!~\"/api/health.*\", status=~\"5..\"}[$__range])) or (sum (increase(http_server_requests_seconds_count{job=\"backend\", environment=\"$environment\", uri=~\"${scope:raw}\", uri=~\"${api}\", method=~\"${method:regex}\", uri!~\"/api/health.*\"}[$__range])) * 0))",
+          "legendFormat": "",
+          "editorMode": "code",
+          "range": false,
+          "instant": true,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "format": "table"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "—",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "blue"
+          },
+          "custom": {},
+          "mappings": [
+            {
+              "type": "special",
+              "options": {
+                "match": "nan",
+                "result": {
+                  "text": "—",
+                  "color": "gray"
+                }
+              }
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      }
+    },
+    {
+      "id": 8,
+      "title": "5xx 비율 · 최근 구간",
+      "type": "stat",
+      "gridPos": {
+        "x": 20,
+        "y": 4,
+        "w": 4,
+        "h": 4
+      },
+      "description": "5xx / 전체 요청. 요청이 없는 구간은 0%로 채우지 않습니다.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "100 * (sum (rate(http_server_requests_seconds_count{job=\"backend\", environment=\"$environment\", uri=~\"${scope:raw}\", uri=~\"${api}\", method=~\"${method:regex}\", uri!~\"/api/health.*\", status=~\"5..\"}[$__rate_interval])) or (sum (rate(http_server_requests_seconds_count{job=\"backend\", environment=\"$environment\", uri=~\"${scope:raw}\", uri=~\"${api}\", method=~\"${method:regex}\", uri!~\"/api/health.*\"}[$__rate_interval])) * 0)) / (sum (rate(http_server_requests_seconds_count{job=\"backend\", environment=\"$environment\", uri=~\"${scope:raw}\", uri=~\"${api}\", method=~\"${method:regex}\", uri!~\"/api/health.*\"}[$__rate_interval])) > 0)",
+          "legendFormat": "",
+          "editorMode": "code",
+          "range": false,
+          "instant": true,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "format": "table"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "noValue": "—",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "blue"
+          },
+          "custom": {},
+          "mappings": [
+            {
+              "type": "special",
+              "options": {
+                "match": "nan",
+                "result": {
+                  "text": "—",
+                  "color": "gray"
+                }
+              }
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      }
+    },
+    {
+      "id": 9,
+      "title": "요청량과 상태 코드",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 0,
+        "y": 8,
+        "w": 12,
+        "h": 7
+      },
+      "description": "",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (status) (rate(http_server_requests_seconds_count{job=\"backend\", environment=\"$environment\", uri=~\"${scope:raw}\", uri=~\"${api}\", method=~\"${method:regex}\", uri!~\"/api/health.*\"}[$__rate_interval]))",
+          "legendFormat": "{{status}}",
+          "editorMode": "code",
+          "range": true,
+          "instant": false,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "noValue": "—",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "fillOpacity": 8,
+            "showPoints": "never",
+            "spanNulls": false,
+            "axisCenteredZero": false
+          },
+          "mappings": [
+            {
+              "type": "special",
+              "options": {
+                "match": "nan",
+                "result": {
+                  "text": "—",
+                  "color": "gray"
+                }
+              }
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 10,
+      "title": "응답시간 추이",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 12,
+        "y": 8,
+        "w": 12,
+        "h": 7
+      },
+      "description": "",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(http_server_requests_seconds_bucket{job=\"backend\", environment=\"$environment\", uri=~\"${scope:raw}\", uri=~\"${api}\", method=~\"${method:regex}\", uri!~\"/api/health.*\"}[$__rate_interval])))",
+          "legendFormat": "p95",
+          "editorMode": "code",
+          "range": true,
+          "instant": false,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        },
+        {
+          "refId": "B",
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(http_server_requests_seconds_bucket{job=\"backend\", environment=\"$environment\", uri=~\"${scope:raw}\", uri=~\"${api}\", method=~\"${method:regex}\", uri!~\"/api/health.*\"}[$__rate_interval])))",
+          "legendFormat": "p99",
+          "editorMode": "code",
+          "range": true,
+          "instant": false,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        },
+        {
+          "refId": "C",
+          "expr": "sum (rate(http_server_requests_seconds_sum{job=\"backend\", environment=\"$environment\", uri=~\"${scope:raw}\", uri=~\"${api}\", method=~\"${method:regex}\", uri!~\"/api/health.*\"}[$__rate_interval])) / (sum (rate(http_server_requests_seconds_count{job=\"backend\", environment=\"$environment\", uri=~\"${scope:raw}\", uri=~\"${api}\", method=~\"${method:regex}\", uri!~\"/api/health.*\"}[$__rate_interval])) > 0)",
+          "legendFormat": "평균",
+          "editorMode": "code",
+          "range": true,
+          "instant": false,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "noValue": "—",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "fillOpacity": 8,
+            "showPoints": "never",
+            "spanNulls": false,
+            "axisCenteredZero": false
+          },
+          "mappings": [
+            {
+              "type": "special",
+              "options": {
+                "match": "nan",
+                "result": {
+                  "text": "—",
+                  "color": "gray"
+                }
+              }
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 11,
+      "title": "2 · 어떤 API가 느리거나 실패했나요?",
+      "type": "row",
+      "gridPos": {
+        "x": 0,
+        "y": 15,
+        "w": 24,
+        "h": 1
+      },
+      "description": "",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "—",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {},
+          "mappings": [
+            {
+              "type": "special",
+              "options": {
+                "match": "nan",
+                "result": {
+                  "text": "—",
+                  "color": "gray"
+                }
+              }
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {},
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 12,
+      "title": "API별 비교 · p95 높은 순",
+      "type": "table",
+      "gridPos": {
+        "x": 0,
+        "y": 16,
+        "w": 24,
+        "h": 10
+      },
+      "description": "선택한 전체 기간의 요청 수·평균 RPS·p95·p99·5xx를 비교합니다. 테스트가 끝난 뒤에도 기간을 맞춰 지연을 확인할 수 있습니다. API 경로를 누르면 요청 조회 범위를 좁힙니다.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "(sum by (environment, method, uri) (increase(http_server_requests_seconds_count{job=\"backend\", environment=\"$environment\", uri=~\"${scope:raw}\", uri=~\"${api}\", method=~\"${method:regex}\", uri!~\"/api/health.*\"}[$__range]))) and on (environment, method, uri) (sum by (environment, method, uri) (increase(http_server_requests_seconds_count{job=\"backend\", environment=\"$environment\", uri=~\"${scope:raw}\", uri=~\"${api}\", method=~\"${method:regex}\", uri!~\"/api/health.*\"}[$__range])) > 0)",
+          "legendFormat": "",
+          "editorMode": "code",
+          "range": false,
+          "instant": true,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "format": "table"
+        },
+        {
+          "refId": "B",
+          "expr": "(sum by (environment, method, uri) (rate(http_server_requests_seconds_count{job=\"backend\", environment=\"$environment\", uri=~\"${scope:raw}\", uri=~\"${api}\", method=~\"${method:regex}\", uri!~\"/api/health.*\"}[$__range]))) and on (environment, method, uri) (sum by (environment, method, uri) (increase(http_server_requests_seconds_count{job=\"backend\", environment=\"$environment\", uri=~\"${scope:raw}\", uri=~\"${api}\", method=~\"${method:regex}\", uri!~\"/api/health.*\"}[$__range])) > 0)",
+          "legendFormat": "",
+          "editorMode": "code",
+          "range": false,
+          "instant": true,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "format": "table"
+        },
+        {
+          "refId": "C",
+          "expr": "(histogram_quantile(0.95, sum by (le, environment, method, uri) (rate(http_server_requests_seconds_bucket{job=\"backend\", environment=\"$environment\", uri=~\"${scope:raw}\", uri=~\"${api}\", method=~\"${method:regex}\", uri!~\"/api/health.*\"}[$__range])))) and on (environment, method, uri) (sum by (environment, method, uri) (increase(http_server_requests_seconds_count{job=\"backend\", environment=\"$environment\", uri=~\"${scope:raw}\", uri=~\"${api}\", method=~\"${method:regex}\", uri!~\"/api/health.*\"}[$__range])) > 0)",
+          "legendFormat": "",
+          "editorMode": "code",
+          "range": false,
+          "instant": true,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "format": "table"
+        },
+        {
+          "refId": "D",
+          "expr": "(histogram_quantile(0.99, sum by (le, environment, method, uri) (rate(http_server_requests_seconds_bucket{job=\"backend\", environment=\"$environment\", uri=~\"${scope:raw}\", uri=~\"${api}\", method=~\"${method:regex}\", uri!~\"/api/health.*\"}[$__range])))) and on (environment, method, uri) (sum by (environment, method, uri) (increase(http_server_requests_seconds_count{job=\"backend\", environment=\"$environment\", uri=~\"${scope:raw}\", uri=~\"${api}\", method=~\"${method:regex}\", uri!~\"/api/health.*\"}[$__range])) > 0)",
+          "legendFormat": "",
+          "editorMode": "code",
+          "range": false,
+          "instant": true,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "format": "table"
+        },
+        {
+          "refId": "E",
+          "expr": "((sum by (environment, method, uri) (increase(http_server_requests_seconds_count{job=\"backend\", environment=\"$environment\", uri=~\"${scope:raw}\", uri=~\"${api}\", method=~\"${method:regex}\", uri!~\"/api/health.*\", status=~\"5..\"}[$__range])) or (sum by (environment, method, uri) (increase(http_server_requests_seconds_count{job=\"backend\", environment=\"$environment\", uri=~\"${scope:raw}\", uri=~\"${api}\", method=~\"${method:regex}\", uri!~\"/api/health.*\"}[$__range])) * 0))) and on (environment, method, uri) (sum by (environment, method, uri) (increase(http_server_requests_seconds_count{job=\"backend\", environment=\"$environment\", uri=~\"${scope:raw}\", uri=~\"${api}\", method=~\"${method:regex}\", uri!~\"/api/health.*\"}[$__range])) > 0)",
+          "legendFormat": "",
+          "editorMode": "code",
+          "range": false,
+          "instant": true,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "format": "table"
+        },
+        {
+          "refId": "F",
+          "expr": "(100 * (sum by (environment, method, uri) (rate(http_server_requests_seconds_count{job=\"backend\", environment=\"$environment\", uri=~\"${scope:raw}\", uri=~\"${api}\", method=~\"${method:regex}\", uri!~\"/api/health.*\", status=~\"5..\"}[$__range])) or (sum by (environment, method, uri) (rate(http_server_requests_seconds_count{job=\"backend\", environment=\"$environment\", uri=~\"${scope:raw}\", uri=~\"${api}\", method=~\"${method:regex}\", uri!~\"/api/health.*\"}[$__range])) * 0)) / (sum by (environment, method, uri) (rate(http_server_requests_seconds_count{job=\"backend\", environment=\"$environment\", uri=~\"${scope:raw}\", uri=~\"${api}\", method=~\"${method:regex}\", uri!~\"/api/health.*\"}[$__range])) > 0)) and on (environment, method, uri) (sum by (environment, method, uri) (increase(http_server_requests_seconds_count{job=\"backend\", environment=\"$environment\", uri=~\"${scope:raw}\", uri=~\"${api}\", method=~\"${method:regex}\", uri!~\"/api/health.*\"}[$__range])) > 0)",
+          "legendFormat": "",
+          "editorMode": "code",
+          "range": false,
+          "instant": true,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "format": "table"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "—",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {},
+          "mappings": [
+            {
+              "type": "special",
+              "options": {
+                "match": "nan",
+                "result": {
+                  "text": "—",
+                  "color": "gray"
+                }
+              }
+            }
+          ]
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "uri"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "API"
+              },
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "이 API의 지표와 요청 로그",
+                    "url": "/d/toadzip-api-load-test?${__url_time_range}&var-environment=$environment&var-scope=${scope:percentencode}&var-logs=${logs:percentencode}&var-method=${__data.fields.method}&var-api=${__value.raw}",
+                    "targetBlank": false
+                  }
+                ]
+              },
+              {
+                "id": "custom.width",
+                "value": 360
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "p95"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "s"
+              },
+              {
+                "id": "custom.width",
+                "value": 85
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "p99"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "s"
+              },
+              {
+                "id": "custom.width",
+                "value": 85
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "RPS · 기간 평균"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "reqps"
+              },
+              {
+                "id": "custom.width",
+                "value": 155
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "5xx 비율"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percent"
+              },
+              {
+                "id": "custom.width",
+                "value": 100
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "method"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 70
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "요청 수 · 선택 기간"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 165
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "5xx · 선택 기간"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 145
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false
+        },
+        "sortBy": [
+          {
+            "displayName": "p95",
+            "desc": true
+          }
+        ]
+      },
+      "transformations": [
+        {
+          "id": "merge",
+          "options": {}
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "environment": true
+            },
+            "indexByName": {
+              "method": 0,
+              "uri": 1,
+              "Value #A": 2,
+              "Value #B": 3,
+              "Value #C": 4,
+              "Value #D": 5,
+              "Value #E": 6,
+              "Value #F": 7
+            },
+            "renameByName": {
+              "Value #A": "요청 수 · 선택 기간",
+              "Value #B": "RPS · 기간 평균",
+              "Value #C": "p95",
+              "Value #D": "p99",
+              "Value #E": "5xx · 선택 기간",
+              "Value #F": "5xx 비율"
+            }
+          }
+        },
+        {
+          "id": "sortBy",
+          "options": {
+            "sort": [
+              {
+                "field": "p95",
+                "desc": true
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": 13,
+      "title": "3 · DB 연결과 JVM이 막히나요?",
+      "type": "row",
+      "gridPos": {
+        "x": 0,
+        "y": 26,
+        "w": 24,
+        "h": 1
+      },
+      "description": "",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "—",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {},
+          "mappings": [
+            {
+              "type": "special",
+              "options": {
+                "match": "nan",
+                "result": {
+                  "text": "—",
+                  "color": "gray"
+                }
+              }
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {},
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 14,
+      "title": "DB 풀 · 사용 / 최대",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 0,
+        "y": 27,
+        "w": 12,
+        "h": 7
+      },
+      "description": "업무 DB와 공유 DB의 연결풀을 구분합니다.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "hikaricp_connections_active{job=\"backend\", environment=\"$environment\", pool=~\"${pool:regex}\"}",
+          "legendFormat": "{{pool}} 사용",
+          "editorMode": "code",
+          "range": true,
+          "instant": false,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        },
+        {
+          "refId": "B",
+          "expr": "hikaricp_connections_max{job=\"backend\", environment=\"$environment\", pool=~\"${pool:regex}\"}",
+          "legendFormat": "{{pool}} 최대",
+          "editorMode": "code",
+          "range": true,
+          "instant": false,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "—",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "fillOpacity": 8,
+            "showPoints": "never",
+            "spanNulls": false,
+            "axisCenteredZero": false
+          },
+          "mappings": [
+            {
+              "type": "special",
+              "options": {
+                "match": "nan",
+                "result": {
+                  "text": "—",
+                  "color": "gray"
+                }
+              }
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 15,
+      "title": "DB 풀 · 대기 중인 요청",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 12,
+        "y": 27,
+        "w": 12,
+        "h": 7
+      },
+      "description": "지연과 함께 증가하면 DB 연결 부족을 먼저 확인합니다.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "hikaricp_connections_pending{job=\"backend\", environment=\"$environment\", pool=~\"${pool:regex}\"}",
+          "legendFormat": "{{pool}} 대기",
+          "editorMode": "code",
+          "range": true,
+          "instant": false,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "—",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "fillOpacity": 8,
+            "showPoints": "never",
+            "spanNulls": false,
+            "axisCenteredZero": false
+          },
+          "mappings": [
+            {
+              "type": "special",
+              "options": {
+                "match": "nan",
+                "result": {
+                  "text": "—",
+                  "color": "gray"
+                }
+              }
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 16,
+      "title": "DB 연결 획득 · 평균 대기시간",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 0,
+        "y": 34,
+        "w": 12,
+        "h": 7
+      },
+      "description": "DB 쿼리 실행시간이 아니라 풀에서 연결을 얻는 데 걸린 시간입니다.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "rate(hikaricp_connections_acquire_seconds_sum{job=\"backend\", environment=\"$environment\", pool=~\"${pool:regex}\"}[$__rate_interval]) / (rate(hikaricp_connections_acquire_seconds_count{job=\"backend\", environment=\"$environment\", pool=~\"${pool:regex}\"}[$__rate_interval]) > 0)",
+          "legendFormat": "{{pool}}",
+          "editorMode": "code",
+          "range": true,
+          "instant": false,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "noValue": "—",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "fillOpacity": 8,
+            "showPoints": "never",
+            "spanNulls": false,
+            "axisCenteredZero": false
+          },
+          "mappings": [
+            {
+              "type": "special",
+              "options": {
+                "match": "nan",
+                "result": {
+                  "text": "—",
+                  "color": "gray"
+                }
+              }
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 17,
+      "title": "DB 연결 획득 · timeout",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 12,
+        "y": 34,
+        "w": 12,
+        "h": 7
+      },
+      "description": "",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (pool) (increase(hikaricp_connections_timeout_total{job=\"backend\", environment=\"$environment\", pool=~\"${pool:regex}\"}[$__rate_interval]))",
+          "legendFormat": "{{pool}}",
+          "editorMode": "code",
+          "range": true,
+          "instant": false,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "—",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "fillOpacity": 8,
+            "showPoints": "never",
+            "spanNulls": false,
+            "axisCenteredZero": false
+          },
+          "mappings": [
+            {
+              "type": "special",
+              "options": {
+                "match": "nan",
+                "result": {
+                  "text": "—",
+                  "color": "gray"
+                }
+              }
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 18,
+      "title": "백엔드 프로세스 CPU",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 0,
+        "y": 41,
+        "w": 8,
+        "h": 7
+      },
+      "description": "서버 전체 CPU가 아니라 백엔드 프로세스 CPU입니다.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "100 * process_cpu_usage{job=\"backend\", environment=\"$environment\"}",
+          "legendFormat": "프로세스 CPU",
+          "editorMode": "code",
+          "range": true,
+          "instant": false,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "noValue": "—",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "fillOpacity": 8,
+            "showPoints": "never",
+            "spanNulls": false,
+            "axisCenteredZero": false
+          },
+          "mappings": [
+            {
+              "type": "special",
+              "options": {
+                "match": "nan",
+                "result": {
+                  "text": "—",
+                  "color": "gray"
+                }
+              }
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 19,
+      "title": "JVM 힙 · 사용 / 최대",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 8,
+        "y": 41,
+        "w": 8,
+        "h": 7
+      },
+      "description": "",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(jvm_memory_used_bytes{job=\"backend\", environment=\"$environment\", area=\"heap\"})",
+          "legendFormat": "사용",
+          "editorMode": "code",
+          "range": true,
+          "instant": false,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        },
+        {
+          "refId": "B",
+          "expr": "sum(jvm_memory_max_bytes{job=\"backend\", environment=\"$environment\", area=\"heap\"})",
+          "legendFormat": "최대",
+          "editorMode": "code",
+          "range": true,
+          "instant": false,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "noValue": "—",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "fillOpacity": 8,
+            "showPoints": "never",
+            "spanNulls": false,
+            "axisCenteredZero": false
+          },
+          "mappings": [
+            {
+              "type": "special",
+              "options": {
+                "match": "nan",
+                "result": {
+                  "text": "—",
+                  "color": "gray"
+                }
+              }
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 20,
+      "title": "GC 일시정지 · 시간 비율",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 16,
+        "y": 41,
+        "w": 8,
+        "h": 7
+      },
+      "description": "",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "100 * sum(rate(jvm_gc_pause_seconds_sum{job=\"backend\", environment=\"$environment\"}[$__rate_interval]))",
+          "legendFormat": "GC 일시정지",
+          "editorMode": "code",
+          "range": true,
+          "instant": false,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "noValue": "—",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "fillOpacity": 8,
+            "showPoints": "never",
+            "spanNulls": false,
+            "axisCenteredZero": false
+          },
+          "mappings": [
+            {
+              "type": "special",
+              "options": {
+                "match": "nan",
+                "result": {
+                  "text": "—",
+                  "color": "gray"
+                }
+              }
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 21,
+      "title": "Tomcat 처리 스레드 · 사용 / 최대",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 0,
+        "y": 48,
+        "w": 12,
+        "h": 7
+      },
+      "description": "Tomcat MBean 계측을 배포한 뒤 표시됩니다. 데이터 없음은 스레드 사용 0을 의미하지 않습니다.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "tomcat_threads_busy_threads{job=\"backend\", environment=\"$environment\"}",
+          "legendFormat": "{{name}} 사용",
+          "editorMode": "code",
+          "range": true,
+          "instant": false,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        },
+        {
+          "refId": "B",
+          "expr": "tomcat_threads_config_max_threads{job=\"backend\", environment=\"$environment\"}",
+          "legendFormat": "{{name}} 최대",
+          "editorMode": "code",
+          "range": true,
+          "instant": false,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "—",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "fillOpacity": 8,
+            "showPoints": "never",
+            "spanNulls": false,
+            "axisCenteredZero": false
+          },
+          "mappings": [
+            {
+              "type": "special",
+              "options": {
+                "match": "nan",
+                "result": {
+                  "text": "—",
+                  "color": "gray"
+                }
+              }
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 22,
+      "title": "외부 HTTP 호출 · 평균 시간",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 12,
+        "y": 48,
+        "w": 12,
+        "h": 7
+      },
+      "description": "Spring의 관측 가능한 RestClient 계측 배포 후 표시됩니다. 외부 호출 시간과 DB 연결 획득시간은 API 총시간과 다른 측정 범위입니다.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (client_name, method, uri, status) (rate(http_client_requests_seconds_sum{job=\"backend\", environment=\"$environment\"}[$__rate_interval])) / (sum by (client_name, method, uri, status) (rate(http_client_requests_seconds_count{job=\"backend\", environment=\"$environment\"}[$__rate_interval])) > 0)",
+          "legendFormat": "{{client_name}} {{method}} {{uri}} · {{status}}",
+          "editorMode": "code",
+          "range": true,
+          "instant": false,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "noValue": "—",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "fillOpacity": 8,
+            "showPoints": "never",
+            "spanNulls": false,
+            "axisCenteredZero": false
+          },
+          "mappings": [
+            {
+              "type": "special",
+              "options": {
+                "match": "nan",
+                "result": {
+                  "text": "—",
+                  "color": "gray"
+                }
+              }
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 29,
+      "type": "row",
+      "title": "4 · 공유 DB 서버의 CPU·메모리가 부족한가요?",
+      "gridPos": {
+        "x": 0,
+        "y": 55,
+        "w": 24,
+        "h": 1
+      },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 30,
+      "title": "DB 호스트 · 수집 상태",
+      "type": "stat",
+      "gridPos": {
+        "x": 0,
+        "y": 56,
+        "w": 8,
+        "h": 4
+      },
+      "description": "공유 DB 호스트의 Node Exporter 수집 상태입니다. 대상 등록 전은 —로 표시합니다. PostgreSQL 상태는 별도입니다.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "up{job=\"db-host\", instance=\"$db_host\"}",
+          "legendFormat": "",
+          "editorMode": "code",
+          "range": false,
+          "instant": true,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "format": "table"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "—",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "gray"
+          },
+          "custom": {},
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "수집 실패",
+                  "color": "red"
+                },
+                "1": {
+                  "text": "수집 정상",
+                  "color": "green"
+                }
+              }
+            },
+            {
+              "type": "special",
+              "options": {
+                "match": "nan",
+                "result": {
+                  "text": "—",
+                  "color": "gray"
+                }
+              }
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      }
+    },
+    {
+      "id": 31,
+      "title": "DB 호스트 · CPU 사용률",
+      "type": "stat",
+      "gridPos": {
+        "x": 8,
+        "y": 56,
+        "w": 8,
+        "h": 4
+      },
+      "description": "개발·운영·공유 PostgreSQL과 같은 서버의 전체 자원입니다. API 환경 선택과 무관합니다. CPU 비유휴 시간의 코어 평균입니다. IO 대기도 포함하므로 추이의 IO 대기를 함께 확인합니다.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "(100 * (1 - avg by (instance) (rate(node_cpu_seconds_total{job=\"db-host\", instance=\"$db_host\",mode=\"idle\"}[$__rate_interval])))) and on (instance) (up{job=\"db-host\", instance=\"$db_host\"} == 1)",
+          "legendFormat": "",
+          "editorMode": "code",
+          "range": false,
+          "instant": true,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "format": "table"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "noValue": "—",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "blue"
+          },
+          "custom": {},
+          "mappings": [
+            {
+              "type": "special",
+              "options": {
+                "match": "nan",
+                "result": {
+                  "text": "—",
+                  "color": "gray"
+                }
+              }
+            }
+          ],
+          "min": 0,
+          "max": 100
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      }
+    },
+    {
+      "id": 32,
+      "title": "DB 호스트 · 메모리 사용률",
+      "type": "stat",
+      "gridPos": {
+        "x": 16,
+        "y": 56,
+        "w": 8,
+        "h": 4
+      },
+      "description": "개발·운영·공유 PostgreSQL과 같은 서버의 전체 자원입니다. API 환경 선택과 무관합니다. 1 - MemAvailable/MemTotal입니다. 단순 MemFree가 아니라 재활용 가능한 캐시를 고려한 사용률입니다.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "(100 * (1 - node_memory_MemAvailable_bytes{job=\"db-host\", instance=\"$db_host\"} / node_memory_MemTotal_bytes{job=\"db-host\", instance=\"$db_host\"})) and on (instance) (up{job=\"db-host\", instance=\"$db_host\"} == 1)",
+          "legendFormat": "",
+          "editorMode": "code",
+          "range": false,
+          "instant": true,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "format": "table"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "noValue": "—",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "blue"
+          },
+          "custom": {},
+          "mappings": [
+            {
+              "type": "special",
+              "options": {
+                "match": "nan",
+                "result": {
+                  "text": "—",
+                  "color": "gray"
+                }
+              }
+            }
+          ],
+          "min": 0,
+          "max": 100
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      }
+    },
+    {
+      "id": 33,
+      "title": "DB 호스트 · CPU·IO 대기 추이",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 0,
+        "y": 60,
+        "w": 12,
+        "h": 7
+      },
+      "description": "공유 DB 호스트 전체입니다. API 환경 선택에 따라 바뀌지 않습니다.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "(100 * (1 - avg by (instance) (rate(node_cpu_seconds_total{job=\"db-host\", instance=\"$db_host\",mode=\"idle\"}[$__rate_interval])))) and on (instance) (up{job=\"db-host\", instance=\"$db_host\"} == 1)",
+          "legendFormat": "CPU 비유휴",
+          "editorMode": "code",
+          "range": true,
+          "instant": false,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        },
+        {
+          "refId": "B",
+          "expr": "(100 * avg by (instance) (rate(node_cpu_seconds_total{job=\"db-host\", instance=\"$db_host\",mode=\"iowait\"}[$__rate_interval]))) and on (instance) (up{job=\"db-host\", instance=\"$db_host\"} == 1)",
+          "legendFormat": "IO 대기",
+          "editorMode": "code",
+          "range": true,
+          "instant": false,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "noValue": "—",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "fillOpacity": 8,
+            "showPoints": "never",
+            "spanNulls": false,
+            "axisCenteredZero": false
+          },
+          "mappings": [
+            {
+              "type": "special",
+              "options": {
+                "match": "nan",
+                "result": {
+                  "text": "—",
+                  "color": "gray"
+                }
+              }
+            }
+          ],
+          "min": 0,
+          "max": 100
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 34,
+      "title": "DB 호스트 · 사용·가용 메모리",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 12,
+        "y": 60,
+        "w": 12,
+        "h": 7
+      },
+      "description": "공유 DB 호스트 전체입니다. API 환경 선택에 따라 바뀌지 않습니다.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "(node_memory_MemTotal_bytes{job=\"db-host\", instance=\"$db_host\"} - node_memory_MemAvailable_bytes{job=\"db-host\", instance=\"$db_host\"}) and on (instance) (up{job=\"db-host\", instance=\"$db_host\"} == 1)",
+          "legendFormat": "사용",
+          "editorMode": "code",
+          "range": true,
+          "instant": false,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        },
+        {
+          "refId": "B",
+          "expr": "(node_memory_MemAvailable_bytes{job=\"db-host\", instance=\"$db_host\"}) and on (instance) (up{job=\"db-host\", instance=\"$db_host\"} == 1)",
+          "legendFormat": "가용",
+          "editorMode": "code",
+          "range": true,
+          "instant": false,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        },
+        {
+          "refId": "C",
+          "expr": "(node_memory_MemTotal_bytes{job=\"db-host\", instance=\"$db_host\"}) and on (instance) (up{job=\"db-host\", instance=\"$db_host\"} == 1)",
+          "legendFormat": "전체",
+          "editorMode": "code",
+          "range": true,
+          "instant": false,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "noValue": "—",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "fillOpacity": 8,
+            "showPoints": "never",
+            "spanNulls": false,
+            "axisCenteredZero": false
+          },
+          "mappings": [
+            {
+              "type": "special",
+              "options": {
+                "match": "nan",
+                "result": {
+                  "text": "—",
+                  "color": "gray"
+                }
+              }
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 23,
+      "title": "5 · 실패하거나 느린 요청을 찾으세요",
+      "type": "row",
+      "gridPos": {
+        "x": 0,
+        "y": 67,
+        "w": 24,
+        "h": 1
+      },
+      "description": "",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "—",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {},
+          "mappings": [
+            {
+              "type": "special",
+              "options": {
+                "match": "nan",
+                "result": {
+                  "text": "—",
+                  "color": "gray"
+                }
+              }
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {},
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 28,
+      "title": "최근 요청 · traceId로 로그 이동",
+      "type": "table",
+      "gridPos": {
+        "x": 0,
+        "y": 68,
+        "w": 24,
+        "h": 8
+      },
+      "description": "선택한 환경·기간의 최신 API 요청 최대 300건. traceId를 누르면 같은 요청의 원문 로그로 이동합니다. route 기록 전 과거 상세 요청은 API=All에서 확인합니다.",
+      "datasource": {
+        "type": "loki",
+        "uid": "${logs}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "${logs}"
+          },
+          "expr": "{environment=\"$environment\", service=\"backend\"} |= \"event=http.request.completed\" | regexp `\\[traceId=(?P<traceId>[^\\]]+)\\].*event=http.request.completed method=(?P<method>\\S+) uri=(?P<uri>\\S+) status=(?P<status>[0-9]+) durationMs=(?P<durationMs>[0-9]+)(?: route=(?P<route>\\S+))?` | label_format api_route=`{{ if .route }}{{ .route }}{{ else }}{{ .uri }}{{ end }}` | method=~\"${method:regex}\" | api_route=~\"${scope:raw}\" | api_route=~`${api:regex}` | __error__=\"\" | line_format `{{.method}} {{.uri}} {{.status}} {{.durationMs}} {{.traceId}} {{.api_route}}`",
+          "queryType": "range",
+          "editorMode": "code",
+          "direction": "backward",
+          "maxLines": 300
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "—",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {},
+          "mappings": [
+            {
+              "type": "special",
+              "options": {
+                "match": "nan",
+                "result": {
+                  "text": "—",
+                  "color": "gray"
+                }
+              }
+            }
+          ]
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "소요시간"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "ms"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "traceId"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "이 요청의 전체 로그",
+                    "url": "/explore?schemaVersion=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22${logs}%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22expr%22%3A%22%7Benvironment%3D%5C%22${environment}%5C%22%2C%20service%3D%5C%22backend%5C%22%7D%20%7C%3D%20%5C%22%5BtraceId%3D${__value.raw}%5D%5C%22%22%2C%22queryType%22%3A%22range%22%2C%22editorMode%22%3A%22code%22%2C%22datasource%22%3A%7B%22type%22%3A%22loki%22%2C%22uid%22%3A%22${logs}%22%7D%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
+                    "targetBlank": true
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false
+        },
+        "sortBy": [
+          {
+            "displayName": "시각",
+            "desc": true
+          }
+        ]
+      },
+      "transformations": [
+        {
+          "id": "merge",
+          "options": {}
+        },
+        {
+          "id": "extractFields",
+          "options": {
+            "source": "Line",
+            "format": "regexp",
+            "regExp": "/^(?<method>\\S+) (?<uri>\\S+) (?<status>\\d+) (?<durationMs>\\d+) (?<traceId>\\S+) (?<route>\\S+)$/",
+            "replace": true,
+            "keepTime": true
+          }
+        },
+        {
+          "id": "convertFieldType",
+          "options": {
+            "conversions": [
+              {
+                "targetField": "durationMs",
+                "destinationType": "number"
+              },
+              {
+                "targetField": "status",
+                "destinationType": "number"
+              }
+            ]
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Line": true,
+              "labels": true,
+              "tsNs": true,
+              "id": true,
+              "labelTypes": true
+            },
+            "indexByName": {
+              "Time": 0,
+              "method": 1,
+              "route": 2,
+              "uri": 3,
+              "status": 4,
+              "durationMs": 5,
+              "traceId": 6
+            },
+            "renameByName": {
+              "Time": "시각",
+              "route": "API",
+              "uri": "요청 경로",
+              "status": "상태",
+              "durationMs": "소요시간"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": 24,
+      "title": "최근 실패 요청 · 5xx",
+      "type": "table",
+      "gridPos": {
+        "x": 0,
+        "y": 76,
+        "w": 24,
+        "h": 9
+      },
+      "description": "선택한 전체 기간의 최신 서버 오류 요청 최대 500건. traceId를 누르면 같은 환경·기간의 관련 로그를 조회합니다. 라우트 템플릿 기록 전의 과거 로그는 실제 URI로 필터링됩니다. API=All이면 과거 로그도 조회됩니다.",
+      "datasource": {
+        "type": "loki",
+        "uid": "${logs}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "${logs}"
+          },
+          "expr": "{environment=\"$environment\", service=\"backend\"} |= \"event=http.request.completed\" | regexp `\\[traceId=(?P<traceId>[^\\]]+)\\].*event=http.request.completed method=(?P<method>\\S+) uri=(?P<uri>\\S+) status=(?P<status>[0-9]+) durationMs=(?P<durationMs>[0-9]+)(?: route=(?P<route>\\S+))?` | label_format api_route=`{{ if .route }}{{ .route }}{{ else }}{{ .uri }}{{ end }}` | method=~\"${method:regex}\" | api_route=~\"${scope:raw}\" | api_route=~`${api:regex}` | __error__=\"\" | status >= 500 | line_format `{{.method}} {{.uri}} {{.status}} {{.durationMs}} {{.traceId}} {{.api_route}}`",
+          "queryType": "range",
+          "editorMode": "code",
+          "direction": "backward",
+          "maxLines": 500
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "—",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {},
+          "mappings": [
+            {
+              "type": "special",
+              "options": {
+                "match": "nan",
+                "result": {
+                  "text": "—",
+                  "color": "gray"
+                }
+              }
+            }
+          ]
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "소요시간"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "ms"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "traceId"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "이 요청의 전체 로그",
+                    "url": "/explore?schemaVersion=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22${logs}%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22expr%22%3A%22%7Benvironment%3D%5C%22${environment}%5C%22%2C%20service%3D%5C%22backend%5C%22%7D%20%7C%3D%20%5C%22%5BtraceId%3D${__value.raw}%5D%5C%22%22%2C%22queryType%22%3A%22range%22%2C%22editorMode%22%3A%22code%22%2C%22datasource%22%3A%7B%22type%22%3A%22loki%22%2C%22uid%22%3A%22${logs}%22%7D%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
+                    "targetBlank": true
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false
+        },
+        "sortBy": [
+          {
+            "displayName": "시각",
+            "desc": true
+          }
+        ]
+      },
+      "transformations": [
+        {
+          "id": "merge",
+          "options": {}
+        },
+        {
+          "id": "extractFields",
+          "options": {
+            "source": "Line",
+            "format": "regexp",
+            "regExp": "/^(?<method>\\S+) (?<uri>\\S+) (?<status>\\d+) (?<durationMs>\\d+) (?<traceId>\\S+) (?<route>\\S+)$/",
+            "replace": true,
+            "keepTime": true
+          }
+        },
+        {
+          "id": "convertFieldType",
+          "options": {
+            "conversions": [
+              {
+                "targetField": "durationMs",
+                "destinationType": "number"
+              },
+              {
+                "targetField": "status",
+                "destinationType": "number"
+              }
+            ]
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Line": true,
+              "labels": true,
+              "tsNs": true,
+              "id": true,
+              "labelTypes": true
+            },
+            "indexByName": {
+              "Time": 0,
+              "method": 1,
+              "route": 2,
+              "uri": 3,
+              "status": 4,
+              "durationMs": 5,
+              "traceId": 6
+            },
+            "renameByName": {
+              "Time": "시각",
+              "route": "API",
+              "uri": "요청 경로",
+              "status": "상태",
+              "durationMs": "소요시간"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": 25,
+      "title": "최근 느린 요청",
+      "type": "table",
+      "gridPos": {
+        "x": 0,
+        "y": 85,
+        "w": 24,
+        "h": 9
+      },
+      "description": "성공·실패와 관계없이 선택한 검색 기준 이상 걸린 요청 최대 500건. 라우트 템플릿 기록 전의 과거 로그는 실제 URI로 필터링됩니다. API=All이면 과거 로그도 조회됩니다.",
+      "datasource": {
+        "type": "loki",
+        "uid": "${logs}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "${logs}"
+          },
+          "expr": "{environment=\"$environment\", service=\"backend\"} |= \"event=http.request.completed\" | regexp `\\[traceId=(?P<traceId>[^\\]]+)\\].*event=http.request.completed method=(?P<method>\\S+) uri=(?P<uri>\\S+) status=(?P<status>[0-9]+) durationMs=(?P<durationMs>[0-9]+)(?: route=(?P<route>\\S+))?` | label_format api_route=`{{ if .route }}{{ .route }}{{ else }}{{ .uri }}{{ end }}` | method=~\"${method:regex}\" | api_route=~\"${scope:raw}\" | api_route=~`${api:regex}` | __error__=\"\" | durationMs >= $slow_ms | line_format `{{.method}} {{.uri}} {{.status}} {{.durationMs}} {{.traceId}} {{.api_route}}`",
+          "queryType": "range",
+          "editorMode": "code",
+          "direction": "backward",
+          "maxLines": 500
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "—",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {},
+          "mappings": [
+            {
+              "type": "special",
+              "options": {
+                "match": "nan",
+                "result": {
+                  "text": "—",
+                  "color": "gray"
+                }
+              }
+            }
+          ]
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "소요시간"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "ms"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "traceId"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "이 요청의 전체 로그",
+                    "url": "/explore?schemaVersion=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22${logs}%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22expr%22%3A%22%7Benvironment%3D%5C%22${environment}%5C%22%2C%20service%3D%5C%22backend%5C%22%7D%20%7C%3D%20%5C%22%5BtraceId%3D${__value.raw}%5D%5C%22%22%2C%22queryType%22%3A%22range%22%2C%22editorMode%22%3A%22code%22%2C%22datasource%22%3A%7B%22type%22%3A%22loki%22%2C%22uid%22%3A%22${logs}%22%7D%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
+                    "targetBlank": true
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false
+        },
+        "sortBy": [
+          {
+            "displayName": "시각",
+            "desc": true
+          }
+        ]
+      },
+      "transformations": [
+        {
+          "id": "merge",
+          "options": {}
+        },
+        {
+          "id": "extractFields",
+          "options": {
+            "source": "Line",
+            "format": "regexp",
+            "regExp": "/^(?<method>\\S+) (?<uri>\\S+) (?<status>\\d+) (?<durationMs>\\d+) (?<traceId>\\S+) (?<route>\\S+)$/",
+            "replace": true,
+            "keepTime": true
+          }
+        },
+        {
+          "id": "convertFieldType",
+          "options": {
+            "conversions": [
+              {
+                "targetField": "durationMs",
+                "destinationType": "number"
+              },
+              {
+                "targetField": "status",
+                "destinationType": "number"
+              }
+            ]
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Line": true,
+              "labels": true,
+              "tsNs": true,
+              "id": true,
+              "labelTypes": true
+            },
+            "indexByName": {
+              "Time": 0,
+              "method": 1,
+              "route": 2,
+              "uri": 3,
+              "status": 4,
+              "durationMs": 5,
+              "traceId": 6
+            },
+            "renameByName": {
+              "Time": "시각",
+              "route": "API",
+              "uri": "요청 경로",
+              "status": "상태",
+              "durationMs": "소요시간"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": 26,
+      "title": "WARN·ERROR 원문과 예외",
+      "type": "logs",
+      "gridPos": {
+        "x": 0,
+        "y": 94,
+        "w": 24,
+        "h": 9
+      },
+      "description": "예외 전체와 외부 호출 실패를 확인합니다. API 선택은 요청 표에 적용되며 이 원문 패널은 환경·시간 범위만 적용합니다. multiline 배포 전 로그는 여러 줄로 나뉘어 있을 수 있습니다.",
+      "datasource": {
+        "type": "loki",
+        "uid": "${logs}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "${logs}"
+          },
+          "expr": "{environment=\"$environment\", service=\"backend\"} |~ \"\\\\s(WARN|ERROR)\\\\s\"",
+          "queryType": "range",
+          "editorMode": "code",
+          "direction": "backward",
+          "maxLines": 300
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "—",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {},
+          "mappings": [
+            {
+              "type": "special",
+              "options": {
+                "match": "nan",
+                "result": {
+                  "text": "—",
+                  "color": "gray"
+                }
+              }
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {
+        "showTime": true,
+        "showLabels": false,
+        "showCommonLabels": false,
+        "wrapLogMessage": true,
+        "enableLogDetails": true,
+        "prettifyLogMessage": false,
+        "sortOrder": "Descending",
+        "dedupStrategy": "none"
+      },
+      "transformations": []
+    },
+    {
+      "id": 27,
+      "title": "Nginx · 백엔드에 도달하지 못한 오류",
+      "type": "logs",
+      "gridPos": {
+        "x": 0,
+        "y": 103,
+        "w": 24,
+        "h": 7
+      },
+      "description": "프록시 로그 수집을 배포한 뒤 502·504 등 프록시 실패를 확인합니다. traceId가 없는 요청도 포함됩니다.",
+      "datasource": {
+        "type": "loki",
+        "uid": "${logs}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "${logs}"
+          },
+          "expr": "{environment=\"$environment\", service=\"nginx\"} | json | event=\"proxy.request.completed\" | status >= 500 | __error__=\"\"",
+          "queryType": "range",
+          "editorMode": "code",
+          "direction": "backward",
+          "maxLines": 300
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "—",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {},
+          "mappings": [
+            {
+              "type": "special",
+              "options": {
+                "match": "nan",
+                "result": {
+                  "text": "—",
+                  "color": "gray"
+                }
+              }
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {
+        "showTime": true,
+        "showLabels": false,
+        "wrapLogMessage": true,
+        "enableLogDetails": true,
+        "sortOrder": "Descending"
+      },
+      "transformations": []
+    }
+  ]
+}

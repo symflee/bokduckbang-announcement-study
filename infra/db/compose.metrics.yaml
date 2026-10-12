@@ -1,0 +1,22 @@
+services:
+  node-exporter:
+    image: prom/node-exporter:v1.12.1
+    command:
+      - --collector.disable-defaults
+      - --collector.cpu
+      - --collector.meminfo
+      - --path.procfs=/host/proc
+    ports:
+      - "${DB_METRICS_BIND_IP:?DB_METRICS_BIND_IP is required}:9100:9100"
+    volumes:
+      - type: bind
+        source: /proc
+        target: /host/proc
+        read_only: true
+        bind:
+          create_host_path: false
+    user: "65534:65534"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    restart: unless-stopped

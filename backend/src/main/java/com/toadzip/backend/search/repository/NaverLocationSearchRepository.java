@@ -4,9 +4,11 @@ import com.toadzip.backend.housing.domain.MapCoordinate;
 import com.toadzip.backend.search.domain.LocationSearchType;
 import com.toadzip.backend.search.exception.LocationSearchUnavailableException;
 import java.math.BigDecimal;
+import java.net.SocketTimeoutException;
 import java.time.Duration;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import java.util.stream.StreamSupport;
 import org.slf4j.Logger;
@@ -16,7 +18,9 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Repository;
+import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientResponseException;
 import org.springframework.web.util.HtmlUtils;
 import tools.jackson.databind.JsonNode;
 
@@ -38,12 +42,14 @@ public class NaverLocationSearchRepository {
 
     @Autowired
     public NaverLocationSearchRepository(
+            RestClient.Builder clientBuilder,
             @Value("${app.search.naver-client-id:}") String searchClientId,
             @Value("${app.search.naver-client-secret:}") String searchClientSecret,
             @Value("${app.search.naver-maps-api-key-id:}") String mapsApiKeyId,
             @Value("${app.search.naver-maps-api-key:}") String mapsApiKey
     ) {
-        this(createClient("https://openapi.naver.com"), createClient("https://maps.apigw.ntruss.com"),
+        this(createClient(clientBuilder, "https://openapi.naver.com"),
+                createClient(clientBuilder, "https://maps.apigw.ntruss.com"),
                 searchClientId, searchClientSecret, mapsApiKeyId, mapsApiKey);
     }
 
@@ -58,16 +64,48 @@ public class NaverLocationSearchRepository {
     }
 
     public LocationSearchPage search(String query, LocationSearchType type, int page, int size) {
+        long startedAt = System.nanoTime();
         try {
             if (type == LocationSearchType.REGION) {
                 return searchRegions(query, page, size);
             }
             return searchSubwayStations(query, page, size);
         } catch (RuntimeException exception) {
-            // Upstream exceptions can contain the query or response body. Log only the failure class.
-            log.warn("네이버 위치 검색 요청 실패: {}", exception.getClass().getSimpleName());
+            logFailure(type, exception, startedAt);
             throw new LocationSearchUnavailableException();
         }
+    }
+
+    private void logFailure(LocationSearchType type, RuntimeException exception, long startedAt) {
+        String upstreamStatus = "none";
+        if (exception instanceof RestClientResponseException responseException) {
+            upstreamStatus = Integer.toString(responseException.getStatusCode().value());
+        }
+        // The exception message, search query, credentials and upstream body can contain private data.
+        log.warn("event=external_api.request.failed provider=naver operation={} failure={} "
+                        + "upstreamStatus={} durationMs={} exception={}",
+                type.name(), failureOf(type, exception), upstreamStatus,
+                TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startedAt),
+                exception.getClass().getSimpleName());
+    }
+
+    private String failureOf(LocationSearchType type, RuntimeException exception) {
+        if (type == LocationSearchType.REGION && (mapsApiKeyId.isBlank() || mapsApiKey.isBlank())) {
+            return "configuration";
+        }
+        if (type == LocationSearchType.SUBWAY_STATION && (searchClientId.isBlank() || searchClientSecret.isBlank())) {
+            return "configuration";
+        }
+        if (exception instanceof RestClientResponseException) {
+            return "upstream_http";
+        }
+        if (exception instanceof ResourceAccessException accessException) {
+            if (accessException.getRootCause() instanceof SocketTimeoutException) {
+                return "timeout";
+            }
+            return "io";
+        }
+        return "invalid_response";
     }
 
     private LocationSearchPage searchSubwayStations(String query, int page, int size) {
@@ -201,10 +239,10 @@ public class NaverLocationSearchRepository {
         }
     }
 
-    private static RestClient createClient(String baseUrl) {
+    private static RestClient createClient(RestClient.Builder clientBuilder, String baseUrl) {
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
         factory.setConnectTimeout(Duration.ofSeconds(2));
         factory.setReadTimeout(Duration.ofSeconds(3));
-        return RestClient.builder().baseUrl(baseUrl).requestFactory(factory).build();
+        return clientBuilder.clone().baseUrl(baseUrl).requestFactory(factory).build();
     }
 }

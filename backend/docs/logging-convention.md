@@ -43,7 +43,8 @@ event=<domain>.<action>.<state> key=value key=value
 ## HTTP 요청과 예외
 
 - HTTP 요청 로그는 Controller마다 작성하지 않고 Filter 또는 Interceptor에서 공통 처리한다.
-- 요청 로그에는 HTTP method, URI path, status code와 처리 시간을 기록한다.
+- 요청 로그에는 HTTP method, URI path, status code와 처리 시간, `route` 템플릿을 기록한다.
+- `uri`는 실제 경로, `route`는 `/complexes/{complexId}` 같은 API 분류다. 미매핑 요청은 실제 경로를 쓴다.
 - 예외는 처리 책임이 있는 경계에서 한 번만 기록한다.
 - 스택 트레이스가 필요하면 예외 객체를 SLF4J 호출의 마지막 인자로 전달한다.
 

@@ -10,8 +10,15 @@ scrape_configs:
         labels:
           environment: dev
           application: toadzip-backend
+
       - targets:
           - 10.0.0.236:8081
         labels:
           environment: prod
           application: toadzip-backend
+
+  - job_name: db-host
+    file_sd_configs:
+      - files:
+          - /etc/prometheus/targets/db-host.json
+        refresh_interval: 15s
