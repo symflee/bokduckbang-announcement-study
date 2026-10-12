@@ -36,21 +36,25 @@ Linux DB 서버에서 실행하며 CPU·meminfo collector만 사용한다. 호�
      --file infra/db/compose.metrics.yaml up -d
    ```
 
-3. 모니터링 서버의 `infra/prometheus/targets/db-host.json`에 수집 대상을 등록한다.
-   원본은 빈 목록이며, `<수집 대상>`은 모니터링 서버에서 접근 가능한 호스트 이름으로 바꾼다.
+3. 모니터링 서버의 `infra/prometheus/prometheus.yml`에서 `db-host`의 수집 대상을 등록한다.
+   원본의 `targets`는 빈 목록이다. `<수집 대상>`을 모니터링 서버에서 접근 가능한 호스트 이름으로 바꾼다.
 
-   ```json
-   [{"targets": ["<수집 대상>:9100"], "labels": {"role": "database"}}]
+   ```yaml
+   - job_name: db-host
+     static_configs:
+       - targets: ["<수집 대상>:9100"]
+         labels:
+           role: database
    ```
 
-   처음에는 새 job·마운트를 적용하기 위해 Prometheus 컨테이너를 재생성한다.
+   설정을 적용하려면 모니터링 서버의 저장소 루트에서 Prometheus 컨테이너만 재생성한다.
 
    ```shell
    docker compose --env-file infra/monitoring/.env --file compose.monitoring.yaml \
      up -d --no-deps --force-recreate prometheus
    ```
 
-   이후 대상 파일 변경은 15초 주기로 감지한다. 같은 서버를 dev·prod 대상으로 중복 등록하지 않는다.
+   수집 대상을 변경할 때도 위 명령으로 다시 적용한다. 같은 서버를 dev·prod 대상으로 중복 등록하지 않는다.
 4. Prometheus에서 `up{job="db-host"}`가 1인지 확인한다. `node_cpu_seconds_total`,
    `node_memory_MemAvailable_bytes`, `node_memory_MemTotal_bytes`가 같은 instance에 있어야 한다.
    Grafana의 API·부하테스트 대시보드에서 `공유 DB 호스트`를 선택한다.

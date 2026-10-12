@@ -3,7 +3,6 @@ services:
     image: prom/prometheus:v3.14.0
     volumes:
       - ./infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-      - ./infra/prometheus/targets:/etc/prometheus/targets:ro
       - prometheus_data:/prometheus
     ports:
       - "127.0.0.1:9090:9090"
