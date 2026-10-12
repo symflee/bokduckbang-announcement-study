@@ -42,15 +42,13 @@ describe('App', () => {
     vi.unstubAllGlobals()
   })
 
-  it('지도 설정이 없어도 첫 방문 안내를 표시하고 바로 지도 탐색을 시작한다', () => {
+  it('지도 설정이 없어도 환영 모달 없이 공개 탐색을 시작한다', () => {
     render(
-      <MemoryRouter>
+      <MemoryRouter initialEntries={['/explore']}>
         <App />
       </MemoryRouter>,
     )
 
-    expect(screen.getByRole('dialog', { name: /살고 싶은 동네의/ })).toBeVisible()
-    fireEvent.click(screen.getByRole('button', { name: '바로 지도 둘러보기' }))
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     expect(screen.queryByRole('banner', { name: '서비스 헤더' })).not.toBeInTheDocument()
     expect(screen.getByRole('navigation', { name: '주요 메뉴' })).toBeVisible()
@@ -71,7 +69,7 @@ describe('App', () => {
 
   it('검색창과 공고 메뉴를 두고 소개 제목과 기본 입력 안내는 표시하지 않는다', () => {
     render(
-      <MemoryRouter>
+      <MemoryRouter initialEntries={['/explore']}>
         <App />
       </MemoryRouter>,
     )
@@ -102,7 +100,7 @@ describe('App', () => {
       .toHaveAttribute('src', '/logo-bok-search.svg')
     expect(screen.getByRole('link', { name: '지도로 돌아가기' })).toHaveAttribute(
       'href',
-      '/',
+      '/explore',
     )
   })
 

@@ -20,6 +20,7 @@ import org.springframework.security.oauth2.client.authentication.OAuth2Authentic
 import org.springframework.security.web.authentication.AuthenticationSuccessHandler;
 import org.springframework.security.web.context.SecurityContextRepository;
 import org.springframework.stereotype.Component;
+import org.springframework.web.util.UriComponentsBuilder;
 
 @Component
 @RequiredArgsConstructor
@@ -81,6 +82,15 @@ public class SocialLoginSuccessHandler implements AuthenticationSuccessHandler {
         context.setAuthentication(userAuthentication);
         SecurityContextHolder.setContext(context);
         securityContextRepository.saveContext(context, request, response);
-        response.sendRedirect(successUrl);
+        response.sendRedirect(successRedirectUrl());
+    }
+
+    private String successRedirectUrl() {
+        UriComponentsBuilder url = UriComponentsBuilder.fromUriString(successUrl);
+        String path = url.build().getPath();
+        if (path == null || path.isEmpty() || "/".equals(path) || "/login".equals(path)) {
+            return url.replacePath("/explore").build().toUriString();
+        }
+        return successUrl;
     }
 }

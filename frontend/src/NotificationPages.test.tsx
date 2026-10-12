@@ -124,7 +124,7 @@ it('전체 해제 중에는 중복 클릭과 개별 해제를 막는다', async 
 
 it('지도에서 보관함을 모달로 열고 닫으면 원래 버튼으로 포커스가 돌아온다', async () => {
   session()
-  render(<MemoryRouter><App /></MemoryRouter>)
+  render(<MemoryRouter initialEntries={['/explore']}><App /></MemoryRouter>)
   const trigger = await screen.findByRole('button', { name: '알림 보관함' })
   trigger.focus()
   fireEvent.click(trigger)
@@ -139,7 +139,7 @@ it('지도에서 보관함을 모달로 열고 닫으면 원래 버튼으로 포
 it('모바일 마이 메뉴 안에서 알림 관리와 의견 보내기 및 로그아웃을 제공한다', async () => {
   session()
   vi.stubGlobal('matchMedia', vi.fn(() => ({ matches: true, addEventListener: vi.fn(), removeEventListener: vi.fn() })))
-  render(<MemoryRouter><App /></MemoryRouter>)
+  render(<MemoryRouter initialEntries={['/explore']}><App /></MemoryRouter>)
   fireEvent.click(await screen.findByRole('button', { name: '마이' }))
   expect(screen.getByRole('dialog', { name: '마이페이지' })).toBeVisible()
   expect(within(screen.getByRole('dialog')).getByRole('button', { name: '알림 관리' })).toHaveAttribute('aria-haspopup', 'dialog')
@@ -153,7 +153,7 @@ it('모바일 마이 메뉴 안에서 알림 관리와 의견 보내기 및 로�
 
 it('받은 알림과 등록한 설정을 탭으로 분리하고 모달 안에서 설정을 해제한다', async () => {
   session()
-  render(<MemoryRouter><App /></MemoryRouter>)
+  render(<MemoryRouter initialEntries={['/explore']}><App /></MemoryRouter>)
   fireEvent.click(await screen.findByRole('button', { name: '알림 보관함' }))
   const dialog = screen.getByRole('dialog', { name: '알림 보관함' })
   const received = within(dialog).getByRole('tab', { name: '받은 알림' })

@@ -66,8 +66,8 @@ GOOGLE_CLIENT_SECRET=구글_Client_secret
 KAKAO_CLIENT_ID=카카오_REST_API_키
 KAKAO_CLIENT_SECRET=카카오_Client_Secret
 USER_OAUTH_REDIRECT_BASE_URL=http://localhost
-USER_OAUTH_SUCCESS_URL=http://localhost/
-USER_OAUTH_FAILURE_URL=http://localhost/?login=failed
+USER_OAUTH_SUCCESS_URL=http://localhost/explore
+USER_OAUTH_FAILURE_URL=http://localhost/explore?login=failed
 ~~~
 
 전체 프로젝트를 다시 빌드해 실행한다.
@@ -77,7 +77,7 @@ docker compose -f compose.yaml -f compose.local.yaml -f compose.monitoring.yaml 
   up --detach --build --wait
 ~~~
 
-브라우저에서 **http://localhost/**를 열고 헤더의 **로그인** 버튼으로 모달을 연다.
+브라우저에서 **http://localhost/**의 **시작하기**로 탐색 화면(`/explore`)을 열고 **로그인** 버튼으로 모달을 연다.
 카카오 또는 구글 버튼을 누르고 인증을 완료하면 메인 화면으로 돌아오며 헤더에 **로그인됨**이 표시된다.
 실패하면 메인 화면 위 로그인 모달의 중앙에 재시도 안내를 표시한다.
 
@@ -90,10 +90,11 @@ docker compose -f compose.yaml -f compose.local.yaml -f compose.monitoring.yaml 
 마지막 값은 후행 `/`가 없는 브라우저 공개 서비스 오리진이다. 등록할 콜백 주소는 이 값에
 `/api/auth/oauth2/callback/google`과 `/api/auth/oauth2/callback/kakao`를 붙인 것이다.
 `USER_OAUTH_SUCCESS_URL`, `USER_OAUTH_FAILURE_URL`은 서버가 정한 프론트엔드 이동 주소이며
-애플리케이션 직접 실행 기본값은 각각 `http://localhost:5173/`,
-`http://localhost:5173/?login=failed`이며 Compose는 `http://localhost/` 경로를 사용한다.
-운영에서는 서비스 오리진으로 명시한다. 성공 URL은 `/`, 실패 URL은 `/?login=failed`를 사용한다.
-이전 `/login` 주소도 메인 화면으로 연결되므로 기존 설정으로 복귀해도 새 로그인 흐름을 사용할 수 있다. 카카오 개발자 콘솔에서 로그인과 Redirect URI를 등록하고,
+애플리케이션 직접 실행 기본값은 각각 `http://localhost:5173/explore`,
+`http://localhost:5173/explore?login=failed`이며 Compose는 `http://localhost/explore` 경로를 사용한다.
+운영에서는 서비스 오리진에 성공 경로 `/explore`, 실패 경로 `/explore?login=failed`를 붙여 명시한다.
+기존 성공 URL이 루트(`/` 또는 경로 없음)나 `/login`이면 서버가 같은 오리진의 `/explore`로 정규화하며 쿼리와 앵커는 보존한다. 다른 명시적 경로는 그대로 사용한다.
+로그인 성공 복귀에는 브라우저 저장소 표식을 사용하지 않는다. 기존 실패 URL `/?login=failed`와 `/login?login=failed`는 프론트엔드가 탐색 화면의 로그인 모달로 연결한다. 카카오 개발자 콘솔에서 로그인과 Redirect URI를 등록하고,
 구글 OAuth 클라이언트에도 해당 Redirect URI를 등록한다. 비밀 값은 저장소에 넣지 않는다.
 
 이력이 없는 기존 스키마의 [Flyway 도입](flyway-adoption.md)은 백업·격리 검증과 별도 승인 후
