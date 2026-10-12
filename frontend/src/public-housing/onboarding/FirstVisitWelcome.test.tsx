@@ -18,6 +18,20 @@ beforeEach(() => localStorage.clear())
 afterEach(() => { localStorage.clear(); vi.restoreAllMocks() })
 
 describe('첫 방문 안내', () => {
+  it('안내가 닫힌 뒤에만 탐색 준비를 알리고 재방문에도 알린다', () => {
+    const onExploreReady = vi.fn()
+    const mount = () => render(<FirstVisitWelcome onExploreReady={onExploreReady}
+      onPlaceSelect={vi.fn()} onRegionSelect={vi.fn()} />)
+    const first = mount()
+    expect(onExploreReady).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: '바로 지도 둘러보기' }))
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(onExploreReady).toHaveBeenCalledOnce()
+    first.unmount()
+    mount()
+    expect(onExploreReady).toHaveBeenCalledTimes(2)
+  })
+
   it('완료 후 7일 직전에는 생략하고 정확히 7일 뒤 다시 표시하며 완료할 때만 갱신한다', () => {
     const now = vi.spyOn(Date, 'now').mockReturnValue(1_800_000_000_000)
     const mount = () => render(<FirstVisitWelcome onPlaceSelect={vi.fn()} onRegionSelect={vi.fn()} />)

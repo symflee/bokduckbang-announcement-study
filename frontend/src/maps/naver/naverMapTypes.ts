@@ -48,6 +48,7 @@ interface NaverMapCommonProps {
   onMarkerHighlight?: (complexId: string | null) => void
   onMarkerSelect?: (complexId: string) => void
   onTransitionInterrupt?: () => void
+  onUserInteraction?: () => void
   onViewportChange?: (viewport: ViewportSnapshot) => void
   regionBoundary?: RegionBoundary | null
   transitioning?: boolean

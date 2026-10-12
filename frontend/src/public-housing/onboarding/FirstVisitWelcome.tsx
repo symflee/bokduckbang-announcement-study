@@ -14,10 +14,12 @@ const WELCOME_LIFETIME_MS = 7 * 24 * 60 * 60 * 1000
 interface Props {
   readonly onPlaceSelect: (place: StarterPlace) => void
   readonly onRegionSelect: (region: SearchResultItem) => void
+  readonly onExploreReady?: () => void
   readonly repository?: IntegratedSearchRepository
 }
 
 export function FirstVisitWelcome(props: Props) {
+  const { onExploreReady } = props
   const [open, setOpen] = useState(() => {
     try {
       const stored: unknown = JSON.parse(localStorage.getItem(COMPLETED_KEY) ?? 'null')
@@ -39,6 +41,10 @@ export function FirstVisitWelcome(props: Props) {
     }
     setOpen(false)
   }
+
+  useEffect(() => {
+    if (!open) onExploreReady?.()
+  }, [open, onExploreReady])
 
   return open ? <WelcomeDialog {...props} onComplete={complete} /> : null
 }
