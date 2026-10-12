@@ -250,6 +250,155 @@ afterEach(() => {
 })
 
 describe('PublicHousingExplorer', () => {
+  describe('현재 위치 지도', () => {
+    const originalGeolocation = Object.getOwnPropertyDescriptor(navigator, 'geolocation')
+    let success: PositionCallback
+    let failure: PositionErrorCallback | null
+    const getCurrentPosition = vi.fn<Geolocation['getCurrentPosition']>()
+    const position: GeolocationPosition = {
+      coords: { latitude: 35.18, longitude: 129.07, accuracy: 100,
+        altitude: null, altitudeAccuracy: null, heading: null, speed: null, toJSON: () => ({}) },
+      timestamp: 0, toJSON: () => ({}),
+    }
+
+    beforeEach(() => {
+      getCurrentPosition.mockReset().mockImplementation((onSuccess, onFailure) => {
+        success = onSuccess
+        failure = onFailure ?? null
+      })
+      Object.defineProperty(navigator, 'geolocation', {
+        configurable: true, value: { getCurrentPosition },
+      })
+    })
+    afterEach(() => {
+      if (originalGeolocation) Object.defineProperty(navigator, 'geolocation', originalGeolocation)
+      else Reflect.deleteProperty(navigator, 'geolocation')
+    })
+
+    it('일반 접속에서 현재 위치로 이동하고 이동한 지도 범위의 주택을 조회한다', async () => {
+      const repository = createRepository()
+      renderExplorer(repository, '/?source=shared#map')
+      await waitFor(() => expect(getCurrentPosition).toHaveBeenCalledOnce())
+      expect(screen.getByRole('button', { name: '현재 위치로 이동' })).toBeDisabled()
+      act(() => success(position))
+      expect(screen.getByText('카메라 35.18,129.07')).toBeVisible()
+      expect(screen.getByTestId('map-camera-zoom')).toHaveTextContent('14')
+      fireEvent.click(screen.getByRole('button', { name: '현재 카메라 idle' }))
+      await waitFor(() => expect(repository.findMap).toHaveBeenCalledWith(
+        expect.objectContaining({ bounds: boundsAt(35.18, 129.07), zoom: 14 }), expect.any(AbortSignal),
+      ))
+      expectCurrentSearch({ source: 'shared' })
+      expect(screen.getByTestId('location-hash')).toHaveTextContent('#map')
+      expect(localStorage.length).toBe(1)
+      expect(vi.mocked(trackEvent).mock.calls.flatMap(call => JSON.stringify(call))).not.toContain('35.18')
+    })
+
+    it('첫 방문 안내를 닫은 뒤 위치 확인을 시작한다', async () => {
+      localStorage.clear()
+      renderExplorer(createRepository())
+      expect(screen.getByRole('dialog', { name: /살고 싶은 동네/ })).toBeVisible()
+      await act(async () => {})
+      expect(getCurrentPosition).not.toHaveBeenCalled()
+      fireEvent.click(screen.getByRole('button', { name: '바로 지도 둘러보기' }))
+      await waitFor(() => expect(getCurrentPosition).toHaveBeenCalledOnce())
+      expect(screen.queryByRole('dialog', { name: /살고 싶은 동네/ })).not.toBeInTheDocument()
+      act(() => success(position))
+      expect(screen.getByText('카메라 35.18,129.07')).toBeVisible()
+    })
+
+    it('첫 방문 안내에서 선택한 지역을 현재 위치로 덮어쓰지 않는다', async () => {
+      localStorage.clear()
+      renderExplorer(createRepository())
+      fireEvent.click(screen.getByRole('button', { name: '살고 싶은 지역 검색하기' }))
+      fireEvent.click(screen.getByRole('button', { name: /서울 잠실/ }))
+      await act(async () => {})
+      expect(getCurrentPosition).not.toHaveBeenCalled()
+      expect(screen.getByText('카메라 37.51322,127.10014')).toBeVisible()
+    })
+
+    it.each([
+      '/?mapLat=37.58&mapLng=126.99&mapZoom=15',
+      '/?complexId=17', '/?announcementId=201', '/?boundaryRegionCode=41110',
+      '/?complexRegionCode=11', '/?announcementRegionCode=11',
+    ])('지정된 위치 링크 %s에서는 자동 요청을 생략하지만 수동 이동은 가능하다', async entry => {
+      renderExplorer(createRepository(), entry)
+      await act(async () => {})
+      expect(getCurrentPosition).not.toHaveBeenCalled()
+      fireEvent.click(screen.getByRole('button', { name: '현재 위치로 이동' }))
+      expect(getCurrentPosition).toHaveBeenCalledOnce()
+    })
+
+    it.each([1, 2, 3])('위치 오류 %i가 나도 기본 지도와 검색을 유지하고 버튼으로 재시도한다', async code => {
+      renderExplorer(createRepository())
+      await waitFor(() => expect(getCurrentPosition).toHaveBeenCalledOnce())
+      act(() => failure?.({ code, message: 'browser error', PERMISSION_DENIED: 1,
+        POSITION_UNAVAILABLE: 2, TIMEOUT: 3 }))
+      expect(screen.getByText(code === 1
+        ? '위치 사용이 차단되어 있어요. 브라우저 설정에서 허용하거나 지역을 검색해 주세요.'
+        : '현재 위치를 확인하지 못했어요. 다시 시도하거나 지역을 검색해 주세요.')).toBeVisible()
+      expect(screen.getByText('카메라 37.5666103,126.9783882')).toBeVisible()
+      expect(screen.getByRole('searchbox')).toBeEnabled()
+      fireEvent.click(screen.getByRole('button', { name: '현재 위치로 이동' }))
+      expect(getCurrentPosition).toHaveBeenCalledTimes(2)
+      act(() => success(position))
+      expect(screen.getByText('카메라 35.18,129.07')).toBeVisible()
+    })
+
+    it.each(['지도 직접 조작', '검색'])('%s를 시작하면 늦은 위치 응답을 무시한다', async action => {
+      renderExplorer(createRepository(), '/', searchRepository([], []))
+      await waitFor(() => expect(getCurrentPosition).toHaveBeenCalledOnce())
+      if (action === '검색') fireEvent.change(screen.getByRole('searchbox'), { target: { value: '잠실' } })
+      else fireEvent.click(screen.getByRole('button', { name: action }))
+      act(() => success(position))
+      expect(screen.queryByText('카메라 35.18,129.07')).not.toBeInTheDocument()
+      expect(screen.getByRole('button', { name: '현재 위치로 이동' })).toBeEnabled()
+    })
+
+    it('지정 지역과 임대 필터를 수동 위치 이동 뒤에도 보존한다', async () => {
+      renderExplorer(createRepository(), '/?boundaryRegionCode=41110&complexRentalTypes=NATIONAL_RENTAL')
+      await act(async () => {})
+      fireEvent.click(screen.getByRole('button', { name: '현재 위치로 이동' }))
+      act(() => success(position))
+      expect(screen.getByText('카메라 35.18,129.07')).toBeVisible()
+      expectCurrentSearch({ boundaryRegionCode: '41110', complexRentalTypes: 'NATIONAL_RENTAL' })
+    })
+
+    it('수동 위치 이동 후 늦게 복원된 읍면동 대표좌표가 지도를 되돌리지 않는다', async () => {
+      const deferred = createDeferred<IntegratedSearchResponse>()
+      const search = vi.fn().mockReturnValue(deferred.promise)
+      renderExplorer(createRepository(), '/?boundaryRegionCode=1156011700', { search })
+      await waitFor(() => expect(search).toHaveBeenCalled())
+      fireEvent.click(screen.getByRole('button', { name: '현재 위치로 이동' }))
+      act(() => success(position))
+      await act(async () => deferred.resolve({
+        announcements: [], complexes: [], failures: [], hasNext: false,
+        page: 0, query: '당산동', size: 5, totalCount: 1,
+        regions: [{ ...searchItem('REGION', '1156011700', '서울특별시 영등포구 당산동', 37.53, 126.9),
+          regionCode: '1156011700' }],
+      }))
+      expect(screen.getByText('카메라 35.18,129.07')).toBeVisible()
+      expectCurrentSearch({ boundaryRegionCode: '1156011700' })
+    })
+
+    it.each([false, true])('패널에 가려지지 않는 지도 중앙으로 이동한다 (모바일 %s)', async mobile => {
+      const original = HTMLElement.prototype.getBoundingClientRect
+      vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+        if (this.classList.contains('map-surface')) return new DOMRect(0, 0, mobile ? 390 : 1200, mobile ? 780 : 800)
+        if (this.classList.contains('housing-browse-panel')) return new DOMRect(0, 0, mobile ? 390 : 400, mobile ? 780 : 800)
+        if (this.classList.contains('housing-results')) return mobile
+          ? new DOMRect(0, 358, 390, 422) : new DOMRect(0, 100, 400, 700)
+        return original.call(this)
+      })
+      renderExplorer(createRepository())
+      fireEvent.click(screen.getByRole('button', { name: '공고 목록' }))
+      await waitFor(() => expect(getCurrentPosition).toHaveBeenCalledOnce())
+      act(() => success(position))
+      expect(JSON.parse(screen.getByTestId('map-camera-offset').textContent ?? '{}')).toEqual(
+        mobile ? { x: 0, y: -207 } : { x: 196, y: 0 },
+      )
+    })
+  })
+
   it('지역 검색 없이 최근 본 메뉴를 열어 빈 기록을 안내하고 다시 누르면 접는다', () => {
     const repository = createRepository()
     renderExplorer(repository)
@@ -3342,6 +3491,7 @@ function FakeNaverMap({
   onMarkerHighlight,
   onMarkerSelect,
   onTransitionInterrupt,
+  onUserInteraction,
   onViewportChange,
   transitioning = false,
 }: NaverMapProps) {
@@ -3382,6 +3532,7 @@ function FakeNaverMap({
       <output data-testid="map-camera-bounds">{JSON.stringify(currentBoundsRef.current)}</output>
       <output data-testid="map-camera-zoom">{currentCamera.zoom}</output>
       <output data-testid="map-camera-request">{cameraRequestId}</output>
+      <button type="button" onClick={() => onUserInteraction?.()}>지도 직접 조작</button>
       <button
         type="button"
         onClick={() => onTransitionInterrupt?.()}

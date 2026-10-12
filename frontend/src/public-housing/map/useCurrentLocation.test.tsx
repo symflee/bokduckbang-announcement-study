@@ -125,4 +125,12 @@ describe('현재 위치 확인', () => {
     act(() => result.current.locate())
     expect(result.current.state.kind).toBe('error')
   })
+
+  it('보안 컨텍스트가 아니면 위치 요청 없이 지역 검색을 안내한다', () => {
+    vi.stubGlobal('isSecureContext', false)
+    const { result } = renderHook(() => useCurrentLocation(false, vi.fn()))
+    act(() => result.current.locate())
+    expect(getCurrentPosition).not.toHaveBeenCalled()
+    expect(result.current.state.kind).toBe('error')
+  })
 })

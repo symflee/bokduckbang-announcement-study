@@ -74,6 +74,8 @@ import {
   type ViewportSnapshot,
 } from './map/viewportPolicy.ts'
 import { useHousingMapResults } from './map/useHousingMapResults.ts'
+import { useCurrentLocation } from './map/useCurrentLocation.ts'
+import { CurrentLocationControl } from './map/CurrentLocationControl.tsx'
 import type {
   AnnouncementDetail,
   ComplexDetail,
@@ -221,6 +223,30 @@ export function PublicHousingExplorer({
   const [recentComplexes, setRecentComplexes] = useState(readRecentComplexes)
   const [clusterTransitioning, setClusterTransitioning] = useState(false)
   const [cameraRequestId, setCameraRequestId] = useState(0)
+  const welcomeVisible = !['required', 'failed'].includes(new URLSearchParams(location.search).get('login') ?? '')
+  const [welcomeReady, setWelcomeReady] = useState(!welcomeVisible)
+  const markWelcomeReady = useCallback(() => setWelcomeReady(true), [])
+  const [autoLocationAllowed] = useState(() => {
+    const query = new URLSearchParams(location.search)
+    const detail = parseDetailLocation(query)
+    return parseMapLocation(query).kind !== 'valid'
+      && detail.kind !== 'complex' && detail.kind !== 'announcement'
+      && parseRegionBoundaryCode(query) === null
+      && !parseComplexSearchFilters(query).regionCode
+      && !parseAnnouncementSearchFilters(query).regionCode
+  })
+  const applyCurrentLocation = useCallback((center: { latitude: number; longitude: number }) => {
+    pendingDetailCameraRef.current = null
+    const padding = boundaryScreenPadding(mapWorkspaceRef.current, true)
+    setMapCameraTarget({
+      ...center,
+      zoom: DEFAULT_MAP_LOCATION.zoom,
+      screenOffset: { x: (padding.left - padding.right) / 2, y: (padding.top - padding.bottom) / 2 },
+    })
+    setCameraRequestId(current => current + 1)
+  }, [])
+  const { cancel: cancelCurrentLocation, locate: locateCurrentPosition, state: currentLocationState } =
+    useCurrentLocation(welcomeReady && autoLocationAllowed, applyCurrentLocation)
   const [detailCameraRevision, setDetailCameraRevision] = useState(0)
   const [selectedSearchComplex, setSelectedSearchComplex] =
     useState<SearchResultItem | null>(null)
@@ -326,13 +352,19 @@ export function PublicHousingExplorer({
     if (previousLocationKey.current === location.key) return
     previousLocationKey.current = location.key
     // Browser navigation leaves this temporary view; map URL synchronization does not.
-    if (navigationType === 'POP') closeStreetView('USER_CLOSED', false)
-  }, [location.key, navigationType, closeStreetView])
+    if (navigationType === 'POP') {
+      cancelCurrentLocation()
+      closeStreetView('USER_CLOSED', false)
+    }
+  }, [location.key, navigationType, closeStreetView, cancelCurrentLocation])
 
   const handleSearchActiveChange = useCallback((active: boolean) => {
-    if (active) closeStreetView('USER_CLOSED', false)
+    if (active) {
+      cancelCurrentLocation()
+      closeStreetView('USER_CLOSED', false)
+    }
     setIntegratedSearchActive(active)
-  }, [closeStreetView])
+  }, [closeStreetView, cancelCurrentLocation])
   const prepareDetailVisit = useHousingAnalytics({
     detailLocation,
     readyComplexId: complexDetail.status === 'ready'
@@ -360,13 +392,22 @@ export function PublicHousingExplorer({
   const [selectedSearchRegion, setSelectedSearchRegion] = useState<SearchResultItem | null>(null)
   const boundarySelectionRef = useRef<Pick<SearchResultItem, 'id' | 'regionCode' | 'latitude' | 'longitude'> | null>(null)
   const handledBoundaryCodeRef = useRef<string | null>(null)
+  const boundaryRestoreRevisionRef = useRef(0)
   const pendingBoundaryCameraRef = useRef<{ code: string; zoom: number } | null>(null)
   const boundaryState = useRegionBoundary(boundaryMetadata?.regionCode ?? null, boundaryRepository)
   const selectedBoundarySearchItem = selectedSearchRegion
     && (selectedSearchRegion.regionCode ?? selectedSearchRegion.id) === boundaryRegionCode
       ? selectedSearchRegion : null
 
+  const requestCurrentLocation = useCallback(() => {
+    pendingDetailCameraRef.current = null
+    pendingBoundaryCameraRef.current = null
+    boundaryRestoreRevisionRef.current += 1
+    locateCurrentPosition()
+  }, [locateCurrentPosition])
+
   const focusBoundary = useCallback((code: string) => {
+    cancelCurrentLocation()
     const metadata = findRegionBoundaryMetadata(code)
     const item = boundarySelectionRef.current
     const zoom = pendingBoundaryCameraRef.current?.zoom ?? REGION_FOCUS_ZOOM
@@ -388,7 +429,7 @@ export function PublicHousingExplorer({
       })
       setCameraRequestId((current) => current + 1)
     }
-  }, [])
+  }, [cancelCurrentLocation])
 
   useLayoutEffect(() => {
     // Read padding after search/list visibility commits, including reselecting the same region.
@@ -410,6 +451,7 @@ export function PublicHousingExplorer({
     if (!region) return
     const controller = new AbortController()
     const repository = searchRepository ?? integratedSearchRepository
+    const revision = boundaryRestoreRevisionRef.current
     const restoreRegion = async () => {
       let page = 0
       while (!controller.signal.aborted) {
@@ -419,7 +461,7 @@ export function PublicHousingExplorer({
         if (item) {
           boundarySelectionRef.current = item
           setSelectedSearchRegion(item)
-          focusBoundary(boundaryRegionCode)
+          if (revision === boundaryRestoreRevisionRef.current) focusBoundary(boundaryRegionCode)
           return
         }
         if (!response.hasNext) return
@@ -740,6 +782,7 @@ export function PublicHousingExplorer({
   }, [announcementDetail, complexDetail, detailLocation])
 
   const openDetail = useCallback((kind: ResultTab, id: string, entryPoint: DetailEntryPoint) => {
+    cancelCurrentLocation()
     closeStreetView('TARGET_CHANGED', false)
     if (window.matchMedia?.('(max-width: 1023px)').matches) {
       mobileDetailListModeRef.current ??= listPanelMode
@@ -799,10 +842,12 @@ export function PublicHousingExplorer({
     prepareProductDetail,
     listPanelMode,
     closeStreetView,
+    cancelCurrentLocation,
   ])
 
 
   const applyComplexFilters = useCallback((filters: ComplexSearchFilters) => {
+    cancelCurrentLocation()
     const currentSearch = new URLSearchParams(location.search)
     const nextSearch = setComplexSearchFilters(currentSearch, filters)
     if (nextSearch.toString() === currentSearch.toString()) {
@@ -815,6 +860,7 @@ export function PublicHousingExplorer({
       search: toSearchString(nextSearch),
     }, { state: location.state })
   }, [
+    cancelCurrentLocation,
     location.hash,
     location.pathname,
     location.search,
@@ -982,6 +1028,7 @@ export function PublicHousingExplorer({
   const selectAggregateMarker = useCallback((
     marker: NaverMapAggregateMarker,
   ) => {
+    cancelCurrentLocation()
     if (clusterTransitionRef.current) {
       return
     }
@@ -1014,7 +1061,7 @@ export function PublicHousingExplorer({
       zoom: marker.expansionZoom,
     })
     setCameraRequestId((current) => current + 1)
-  }, [boundaryRegionCode, cancelServerMapRequest, location, navigate, prepareListEntry])
+  }, [boundaryRegionCode, cancelServerMapRequest, location, navigate, prepareListEntry, cancelCurrentLocation])
 
   const interruptClusterTransition = useCallback(() => {
     if (!clusterTransitionRef.current) {
@@ -1057,6 +1104,7 @@ export function PublicHousingExplorer({
   }, [cancelServerMapRequest, complexFilters, finishClusterTransition, requestServerMap])
 
   const handleStarterPlaceSelect = useCallback((place: StarterPlace) => {
+    cancelCurrentLocation()
     closeStreetView('USER_CLOSED', false)
     setListPanelMode('auto')
     pendingDetailCameraRef.current = null
@@ -1069,9 +1117,10 @@ export function PublicHousingExplorer({
     navigate({ pathname: location.pathname, hash: location.hash, search: toSearchString(query) }, {
       state: clearDetailHistoryState(location.state),
     })
-  }, [location, navigate, closeStreetView])
+  }, [location, navigate, closeStreetView, cancelCurrentLocation])
 
   const handleIntegratedSearchSelect = useCallback((item: SearchResultItem) => {
+    cancelCurrentLocation()
     if (item.type === 'COMPLEX') {
       trackEvent('select_search_result', { result_type: 'complex', complex_id: item.id })
     } else if (item.type === 'ANNOUNCEMENT') {
@@ -1129,7 +1178,7 @@ export function PublicHousingExplorer({
     }
     setSelectedSearchComplex(item)
     openComplexDetail(item.id, 'search')
-  }, [boundaryRegionCode, location, navigate, openAnnouncementDetail, openComplexDetail, closeStreetView, prepareListEntry])
+  }, [boundaryRegionCode, location, navigate, openAnnouncementDetail, openComplexDetail, closeStreetView, prepareListEntry, cancelCurrentLocation])
 
   useEffect(() => {
     return () => {
@@ -1197,6 +1246,7 @@ export function PublicHousingExplorer({
         dataBusy: serverMapState.status === 'loading',
         onAggregateMarkerSelect: selectAggregateMarker,
         onTransitionInterrupt: interruptClusterTransition,
+        onUserInteraction: cancelCurrentLocation,
         onViewportChange: handleViewportChange,
         representation: 'AGGREGATE',
         transitioning: clusterTransitioning,
@@ -1209,6 +1259,7 @@ export function PublicHousingExplorer({
         onMarkerHighlight: setMarkerHighlightedComplexId,
         onMarkerSelect: openComplexMarker,
         onTransitionInterrupt: interruptClusterTransition,
+        onUserInteraction: cancelCurrentLocation,
         onViewportChange: handleViewportChange,
         representation: 'INDIVIDUAL',
         transitioning: clusterTransitioning,
@@ -1254,8 +1305,8 @@ export function PublicHousingExplorer({
         event.stopPropagation()
         closeStreetView('USER_CLOSED', true, 'escape')
       }}>
-      {!['required', 'failed'].includes(new URLSearchParams(location.search).get('login') ?? '') && (
-        <FirstVisitWelcome onPlaceSelect={handleStarterPlaceSelect} onRegionSelect={handleIntegratedSearchSelect} repository={searchRepository} />
+      {welcomeVisible && (
+        <FirstVisitWelcome onExploreReady={markWelcomeReady} onPlaceSelect={handleStarterPlaceSelect} onRegionSelect={handleIntegratedSearchSelect} repository={searchRepository} />
       )}
       <nav className="housing-navigation" aria-label="주요 메뉴">
         <div className="housing-results__tabs">
@@ -1487,6 +1538,7 @@ export function PublicHousingExplorer({
         </div>
         <div className="housing-map-base" inert={streetView.active} aria-hidden={streetView.active || undefined}>
           <NaverMap {...naverMapProps} regionBoundary={boundaryState.boundary} />
+          <CurrentLocationControl state={currentLocationState} onLocate={requestCurrentLocation} />
           <div className="housing-map-feedback" hidden={streetView.active}><HousingMapRequestFeedback errorMessage={serverMapState.errorMessage}
             onRetry={() => { captureProductEvent('exploration_retry_clicked', { surface: 'map_results' }); return retryServerMap() }} status={serverMapState.status} /></div>
           {boundaryState.boundary !== null && !streetView.active && (
@@ -1974,14 +2026,15 @@ function pickDetailLocationQuery(search: string) {
   return detailSearch.toString()
 }
 
-function boundaryScreenPadding(workspace: HTMLElement | null) {
+function boundaryScreenPadding(workspace: HTMLElement | null, includeMobileResults = false) {
   const padding = { top: 24, right: 24, bottom: 24, left: 24 }
   const map = workspace?.querySelector('.map-surface')?.getBoundingClientRect()
   if (!map || map.width <= 0 || map.height <= 0) {
     return padding
   }
   // Measure the anchored page shell, not the list's in-flight slide transform.
-  const panels = workspace?.closest('.housing-explorer')?.querySelectorAll('.housing-browse-panel:has(.housing-results[aria-hidden="false"]), .housing-search-overlay, .housing-detail-layer, .housing-map-filter [role="toolbar"], .housing-map-filter [data-topic], .housing-map-filter [role="dialog"]') ?? []
+  const panels = workspace?.closest('.housing-explorer')?.querySelectorAll('.housing-browse-panel:has(.housing-results[aria-hidden="false"]), .housing-search-overlay, .housing-detail-layer, .housing-map-filter [role="toolbar"], .housing-map-filter [data-topic], .housing-map-filter [role="dialog"]'
+    + (includeMobileResults ? ', .housing-results[aria-hidden="false"]' : '')) ?? []
   for (const panel of panels) {
     const style = window.getComputedStyle(panel)
     if (style.visibility === 'hidden' || style.display === 'none') {
@@ -1996,7 +2049,12 @@ function boundaryScreenPadding(workspace: HTMLElement | null) {
       || rect.bottom <= map.top || rect.top >= map.bottom) {
       continue
     }
-    if (rect.height > map.height / 2 && rect.width < map.width * 0.8) {
+    // The mobile half sheet uses viewport height, including the footer. Its
+    // top can be above the map's midpoint while it still covers the bottom.
+    if (includeMobileResults && panel.classList.contains('housing-results')
+      && rect.width >= map.width * 0.8) {
+      padding.bottom = Math.max(padding.bottom, map.bottom - rect.top + 16)
+    } else if (rect.height > map.height / 2 && rect.width < map.width * 0.8) {
       if (rect.left < map.left + map.width / 2) {
         padding.left = Math.max(padding.left, rect.right - map.left + 16)
       } else {

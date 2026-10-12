@@ -156,6 +156,7 @@ export default function NaverMap({
   onMarkerHighlight,
   onMarkerSelect,
   onTransitionInterrupt,
+  onUserInteraction,
   onViewportChange,
   regionBoundary,
   representation,
@@ -196,6 +197,8 @@ export default function NaverMap({
   const onMarkerHighlightRef = useRef(onMarkerHighlight)
   const onMarkerSelectRef = useRef(onMarkerSelect)
   const onTransitionInterruptRef = useRef(onTransitionInterrupt)
+  const onUserInteractionRef = useRef(onUserInteraction)
+  onUserInteractionRef.current = onUserInteraction
   const onViewportChangeRef = useRef(onViewportChange)
   const [attempt, setAttempt] = useState(0)
   const [initializedAttempt, setInitializedAttempt] = useState<number | null>(null)
@@ -359,6 +362,7 @@ export default function NaverMap({
           previousZoom.current = createdMap.getZoom()
           let dragStart: { latitude: number; longitude: number } | null = null
           const emitViewport = () => {
+            if (!cancelled && mapInstance === createdMap) setInitializedAttempt(attempt)
             transitionInterruptedRef.current = false
             const viewport = readViewport(createdMap)
             if (viewport) {
@@ -395,7 +399,7 @@ export default function NaverMap({
           dragStartListener = maps.Event.addListener(
             createdMap,
             'dragstart',
-            () => { dragStart = readViewport(createdMap)?.center ?? null; interruptTransition() },
+            () => { onUserInteractionRef.current?.(); dragStart = readViewport(createdMap)?.center ?? null; interruptTransition() },
           )
           dragEndListener = maps.Event.addListener(createdMap, 'dragend', () => {
             const end = readViewport(createdMap)?.center
@@ -403,7 +407,7 @@ export default function NaverMap({
             dragStart = null
           })
           mapSurface = mapContainerRef.current
-          wheelListener = () => { zoomSource.current = 'other_user'; interruptTransition() }
+          wheelListener = () => { onUserInteractionRef.current?.(); zoomSource.current = 'other_user'; interruptTransition() }
           mapSurface.addEventListener('wheel', wheelListener, { passive: true })
 
           if (typeof ResizeObserver === 'function') {
@@ -581,6 +585,12 @@ export default function NaverMap({
       return
     }
 
+    // GL projection is not ready until init or the first idle. A fast location
+    // response must not consume its screen offset before that point.
+    if (cameraOffsetX !== undefined && Number.isFinite(cameraOffsetX)
+      && cameraOffsetY !== undefined && Number.isFinite(cameraOffsetY)
+      && initializedAttempt !== attempt) return
+
     if (cameraSouthWestLat !== undefined && cameraSouthWestLng !== undefined
       && cameraNorthEastLat !== undefined && cameraNorthEastLng !== undefined) {
       if (initializedAttempt !== attempt) {
@@ -693,6 +703,7 @@ export default function NaverMap({
   const isReady = status.kind === 'ready'
 
   const changeZoom = (delta: number) => {
+    onUserInteractionRef.current?.()
     const map = mapInstanceRef.current
     if (!map) return
     if (transitioningRef.current && !transitionInterruptedRef.current) {
@@ -724,6 +735,12 @@ export default function NaverMap({
         className="map-surface"
         ref={mapContainerRef}
         aria-hidden={!isReady}
+        onPointerDownCapture={() => onUserInteractionRef.current?.()}
+        onKeyDownCapture={(event) => {
+          if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', '+', '-'].includes(event.key)) {
+            onUserInteractionRef.current?.()
+          }
+        }}
       />
       {isLoading && <MapLoading />}
       {isReady && (
