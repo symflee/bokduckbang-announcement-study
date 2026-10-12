@@ -14,7 +14,7 @@ export function PrivacyBoundary() {
   }, [adminPage])
   const state = usePrivacyConsent()
   const needsChoice = state.context && (state.requiresChoice || ['UNSET', 'EXPIRED', 'RECONSENT_REQUIRED'].includes(state.context.consent.effectiveStatus))
-  if (pathname !== '/' || !needsChoice || state.loading) return null
+  if (pathname !== '/explore' || !needsChoice || state.loading) return null
   return <aside className={styles.floating} aria-label="이용 정보 수집 선택"><AnalyticsChoice /></aside>
 }
 export function AnalyticsChoice({ settings = false }: { readonly settings?: boolean }) {
@@ -59,7 +59,7 @@ export function PrivacyMenu() {
   </details>
 }
 export function PrivacySettingsPage() {
-  return <main className={styles.page}><Link to="/">← 지도로 돌아가기</Link><h1>분석 설정</h1><AnalyticsChoice settings /><p className={styles.small}>로그인 중에는 회원 계정의 선택을 적용해요. 로그아웃하면 이 브라우저의 비회원 선택을 적용합니다.</p><Link to="/privacy">개인정보처리방침</Link></main>
+  return <main className={styles.page}><Link to="/explore">← 지도로 돌아가기</Link><h1>분석 설정</h1><AnalyticsChoice settings /><p className={styles.small}>로그인 중에는 회원 계정의 선택을 적용해요. 로그아웃하면 이 브라우저의 비회원 선택을 적용합니다.</p><Link to="/privacy">개인정보처리방침</Link></main>
 }
 export function NoticeContent({ content }: { readonly content: string }) {
   const inline = (text: string) => text.split(/(\*\*[^*\n]+\*\*)/).map((part, index) =>
@@ -86,7 +86,7 @@ export function PrivacyPolicyPage() {
     privacyApi.document(documentKey, documentVersion).then(value => { if (active) setDocument(value) }, () => { if (active) setError(true) })
     return () => { active = false }
   }, [documentKey, documentVersion, notices])
-  return <main className={styles.page}><Link to="/">← 지도로 돌아가기</Link><h1>개인정보처리방침</h1>
+  return <main className={styles.page}><Link to="/explore">← 지도로 돌아가기</Link><h1>개인정보처리방침</h1>
     {((noticeError && !key) || error) ? <div role="alert"><p>문서를 불러오지 못했어요. 주소를 확인하거나 다시 시도해 주세요.</p><button type="button" onClick={retry}>다시 시도</button></div> : document ? <><p className={styles.small}>시행일 {document.effectiveAt.slice(0, 10)} · {document.version}</p><NoticeContent content={document.content} /><Link to={`/privacy/${document.key}/${document.version}`}>이 버전의 고정 주소</Link></> : <p role="status">문서를 불러오는 중…</p>}
     <footer><p>공공주택 복덕방 운영팀</p><a href="mailto:toadzip.official@gmail.com">toadzip.official@gmail.com</a><p><Link to="/privacy/settings">분석 설정 변경</Link></p></footer>
   </main>

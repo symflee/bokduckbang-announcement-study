@@ -29,7 +29,7 @@ beforeEach(() => {
   })
   localStorage.clear()
   sessionStorage.clear()
-  window.history.replaceState({}, '', '/?email=private@example.test#secret')
+  window.history.replaceState({}, '', '/explore?email=private@example.test#secret')
 })
 
 afterEach(() => {

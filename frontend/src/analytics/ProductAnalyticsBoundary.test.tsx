@@ -41,7 +41,7 @@ it('알림 관리 진입은 한 페이지뷰로 수집하고 쿼리 변경을 �
 
 it('starts a fresh current-page visit only when consent becomes valid', () => {
   consent.allowed = false
-  render(<MemoryRouter><ProductAnalyticsBoundary /></MemoryRouter>)
+  render(<MemoryRouter initialEntries={['/explore']}><ProductAnalyticsBoundary /></MemoryRouter>)
   expect(captureProductEvent).not.toHaveBeenCalled()
   act(() => { consent.allowed = true; consent.listeners.forEach(listener => listener()) })
   expect(captureProductEvent).toHaveBeenCalledOnce()
@@ -50,4 +50,18 @@ it('starts a fresh current-page visit only when consent becomes valid', () => {
   expect(captureProductEvent).toHaveBeenCalledTimes(2)
   const keys = vi.mocked(captureProductEvent).mock.calls.map(([, , options]) => options?.dedupeKey)
   expect(new Set(keys).size).toBe(2)
+})
+
+
+it('랜딩은 수집하지 않고 시작하기로 이동한 탐색 화면만 수집한다', () => {
+  function Start() {
+    const navigate = useNavigate()
+    return <button onClick={() => void navigate('/explore')}>시작하기</button>
+  }
+  render(<MemoryRouter><ProductAnalyticsBoundary /><Start /></MemoryRouter>)
+  expect(setProductPageActive).toHaveBeenLastCalledWith(false)
+  expect(captureProductEvent).not.toHaveBeenCalled()
+  fireEvent.click(screen.getByRole('button', { name: '시작하기' }))
+  expect(setProductPageActive).toHaveBeenLastCalledWith(true)
+  expect(captureProductEvent).toHaveBeenCalledOnce()
 })

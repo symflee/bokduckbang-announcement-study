@@ -7,7 +7,7 @@ afterEach(() => vi.unstubAllGlobals())
 
 it('비로그인 사용자도 헤더에서 의견 보내기로 이동한다', async () => {
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('{}', { status: 401 })))
-  render(<MemoryRouter><App /></MemoryRouter>)
+  render(<MemoryRouter initialEntries={['/explore']}><App /></MemoryRouter>)
   fireEvent.click(screen.getByRole('link', { name: '의견 보내기' }))
   expect(await screen.findByRole('heading', { name: '의견 보내기' })).toBeVisible()
   expect(screen.getByRole('textbox', { name: '의견 내용' })).toBeVisible()

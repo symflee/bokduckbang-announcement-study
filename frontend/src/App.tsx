@@ -21,14 +21,32 @@ import { FeedbackPage } from './feedback/FeedbackPage'
 import { FeedbackListPage } from './admin/feedback/FeedbackListPage'
 import { PrivacyBoundary, PrivacyMenu, PrivacyPolicyPage, PrivacySettingsPage } from './privacy/Privacy'
 import { ProductAnalyticsBoundary } from './analytics/ProductAnalyticsBoundary'
+import { useEffect, useState } from 'react'
+import { LandingPage } from './landing/LandingPage'
+import { clearLoginReturn, hasPendingLoginReturn } from './user/auth/loginReturn'
+
+function LandingEntry() {
+  const [returningFromLogin] = useState(hasPendingLoginReturn)
+  const { search, hash } = useLocation()
+  const params = new URLSearchParams(search)
+  // Keep existing detail, filter, map and authentication links usable.
+  const hasExplorerState = Array.from(params.keys()).some((key) =>
+    /^(complex|announcement|map)/.test(key)
+    || key === 'boundaryRegionCode' || key === 'login' || key === 'tab' || key === 'inbox',
+  )
+  return hasExplorerState || returningFromLogin
+    ? <Navigate to={{ pathname: '/explore', search, hash }} replace />
+    : <LandingPage />
+}
 
 function Home() {
+  useEffect(() => { clearLoginReturn() }, [])
   return (
     <NotificationInterestProvider>
       <div className="app-shell">
         <div className="service-rail-brand"><BrandLink /></div>
         <div className="service-rail-account"><PrivacyMenu /><Link className="service-feedback-link" to="/feedback">의견 보내기</Link><NotificationInterestSessionControl presentation="rail" /></div>
-        <main className="map-main"><DefaultPublicHousingExplorer /></main>
+        <main className="map-main"><DefaultPublicHousingExplorer showWelcome={false} /></main>
       </div>
     </NotificationInterestProvider>
   )
@@ -40,7 +58,7 @@ function NotFound() {
       <BrandLink />
       <h1>페이지를 찾을 수 없습니다.</h1>
       <p>입력한 주소를 다시 확인해 주세요.</p>
-      <Link to="/">지도로 돌아가기</Link>
+      <Link to="/explore">지도로 돌아가기</Link>
     </main>
   )
 }
@@ -49,7 +67,7 @@ function LegacyLoginRedirect() {
   const { search, hash } = useLocation()
   const params = new URLSearchParams(search)
   params.set('login', params.get('login') === 'failed' ? 'failed' : 'required')
-  return <Navigate to={{ pathname: '/', search: `?${params}`, hash }} replace />
+  return <Navigate to={{ pathname: '/explore', search: `?${params}`, hash }} replace />
 }
 
 function AdminRoutes() {
@@ -80,18 +98,20 @@ function AdminRoutes() {
 }
 
 export default function App() {
+  const { pathname } = useLocation()
   return (
     <>
-    <PrivacyBoundary />
+    {pathname !== '/' && <PrivacyBoundary />}
     <ProductAnalyticsBoundary />
     <Routes>
-      <Route path="/" element={<Home />} />
+      <Route path="/" element={<LandingEntry />} />
+      <Route path="/explore" element={<Home />} />
       <Route path="/privacy" element={<PrivacyPolicyPage />} />
       <Route path="/privacy/:key/:version" element={<PrivacyPolicyPage />} />
       <Route path="/privacy/settings" element={<PrivacySettingsPage />} />
       <Route path="/login" element={<LegacyLoginRedirect />} />
       <Route path="/feedback" element={<FeedbackPage />} />
-      <Route path="/notifications" element={<Navigate to="/?inbox=open" replace />} />
+      <Route path="/notifications" element={<Navigate to="/explore?inbox=open" replace />} />
       <Route path="/mypage/notifications" element={<NotificationPage management />} />
       <Route path="/notifications/cancel" element={<GuestCancellationPage />} />
       <Route path="/admin/*" element={<AdminRoutes />} />

@@ -153,6 +153,7 @@ interface PendingListFocus {
 }
 
 export interface PublicHousingExplorerProps {
+  showWelcome?: boolean
   boundaryRepository?: RegionBoundaryRepository
   mapRepository: HousingMapRepository
   regionRepository?: PublicHousingRegionRepository
@@ -176,6 +177,7 @@ const INITIAL_ANNOUNCEMENT_DETAIL: AnnouncementDetailState = {
 }
 
 export function PublicHousingExplorer({
+  showWelcome = true,
   boundaryRepository = regionBoundaryRepository,
   mapRepository,
   regionRepository = publicHousingRegionRepository,
@@ -1254,7 +1256,7 @@ export function PublicHousingExplorer({
         event.stopPropagation()
         closeStreetView('USER_CLOSED', true, 'escape')
       }}>
-      {!['required', 'failed'].includes(new URLSearchParams(location.search).get('login') ?? '') && (
+      {showWelcome && !['required', 'failed'].includes(new URLSearchParams(location.search).get('login') ?? '') && (
         <FirstVisitWelcome onPlaceSelect={handleStarterPlaceSelect} onRegionSelect={handleIntegratedSearchSelect} repository={searchRepository} />
       )}
       <nav className="housing-navigation" aria-label="주요 메뉴">

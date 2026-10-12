@@ -41,7 +41,7 @@ beforeEach(() => {
     value: { request: vi.fn(async (_name: string, callback: () => unknown) => callback()) },
   })
   localStorage.clear(); sessionStorage.clear()
-  window.history.replaceState({}, '', '/')
+  window.history.replaceState({}, '', '/explore')
 })
 afterEach(() => {
   stop('reset')

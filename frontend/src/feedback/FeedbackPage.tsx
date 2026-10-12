@@ -51,7 +51,7 @@ export function FeedbackPage() {
 
   return <div className={`${styles.page} ph-no-capture`}>
     <header className={styles.header}><div className={styles.headerInner}>
-      <BrandLink /><Link className={styles.backLink} to="/">
+      <BrandLink /><Link className={styles.backLink} to="/explore">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="m14 6-6 6 6 6" /></svg>
         지도로 돌아가기
       </Link>
@@ -68,7 +68,7 @@ export function FeedbackPage() {
         <span className={styles.successIcon} aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="m6 12 4 4 8-8" /></svg></span>
         <h2 ref={confirmation} tabIndex={-1}>의견이 접수되었습니다.</h2>
         <p>남겨 주신 의견은 서비스 개선에 참고하겠습니다.</p>
-        <Link to="/">지도로 돌아가기</Link>
+        <Link to="/explore">지도로 돌아가기</Link>
       </section> : <form className={styles.form} noValidate aria-label="의견 접수" aria-busy={pending}
         onSubmit={event => { event.preventDefault(); void submit() }}>
         <div className={styles.labelRow}><label htmlFor="feedback-content">의견 내용</label></div>

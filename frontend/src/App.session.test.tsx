@@ -33,7 +33,7 @@ function renderHome(logoutFails = false) {
     throw new Error(`Unexpected request: ${path}`)
   })
   vi.stubGlobal('fetch', fetcher)
-  render(<MemoryRouter><App /></MemoryRouter>)
+  render(<MemoryRouter initialEntries={['/explore']}><App /></MemoryRouter>)
 }
 
 beforeEach(() => {

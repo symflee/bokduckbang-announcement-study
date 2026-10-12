@@ -81,7 +81,7 @@ function installDisableFlag(id: string): boolean {
     get: () => (
       externalOptOut || !analyticsCollectionAllowed() ||
       !pageActive ||
-      window.location.pathname !== '/' ||
+      window.location.pathname !== '/explore' ||
       browserExcluded() ||
       state === 'failed'
     ),
