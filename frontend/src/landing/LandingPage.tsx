@@ -148,7 +148,7 @@ export function LandingPage() {
                     <span className={styles.stepNumber} aria-label={`${index + 1}단계`}>{step.number}</span>
                     <h3>{step.title}</h3>
                     <p>{step.description}</p>
-                    {step.id === 'alerts' && <p className={styles.stepNotice}>로그인 후 설정할 수 있어요.<br />알림 발송은 준비 중이에요.</p>}
+                    {step.id === 'alerts' && <p className={styles.stepNotice}>로그인 후 설정할 수 있어요.</p>}
                   </div>
                   <ServiceScreen step={step} mobile />
                 </li>
