@@ -1,0 +1,181 @@
+{
+  "apiVersion": 1,
+  "groups": [
+    {
+      "orgId": 1,
+      "name": "backend-alerts",
+      "folder": "Monitoring",
+      "interval": "1m",
+      "rules": [
+        {
+          "uid": "ffzwjb7en864ga",
+          "title": "Backend HTTP 5xx",
+          "condition": "C",
+          "data": [
+            {
+              "refId": "A",
+              "relativeTimeRange": {
+                "from": 600,
+                "to": 0
+              },
+              "datasourceUid": "prometheus",
+              "model": {
+                "editorMode": "code",
+                "expr": "sum by (environment, method, uri) (increase(http_server_requests_seconds_count{job=\"backend\",environment=~\"dev|prod\",uri!~\"/actuator.*\",uri!=\"/api/health\",status=~\"5..\"}[5m])) or (sum by (environment, method, uri) (increase(http_server_requests_seconds_count{job=\"backend\",environment=~\"dev|prod\",uri!~\"/actuator.*\",uri!=\"/api/health\"}[5m])) * 0)",
+                "instant": true,
+                "range": false,
+                "intervalMs": 1000,
+                "maxDataPoints": 43200,
+                "refId": "A"
+              }
+            },
+            {
+              "refId": "C",
+              "queryType": "expression",
+              "relativeTimeRange": {
+                "from": 0,
+                "to": 0
+              },
+              "datasourceUid": "__expr__",
+              "model": {
+                "conditions": [
+                  {
+                    "evaluator": {
+                      "params": [
+                        0
+                      ],
+                      "type": "gt"
+                    },
+                    "operator": {
+                      "type": "and"
+                    },
+                    "query": {
+                      "params": [
+                        "C"
+                      ]
+                    },
+                    "reducer": {
+                      "params": [],
+                      "type": "last"
+                    },
+                    "type": "query"
+                  }
+                ],
+                "datasource": {
+                  "type": "__expr__",
+                  "uid": "__expr__"
+                },
+                "expression": "A",
+                "intervalMs": 1000,
+                "maxDataPoints": 43200,
+                "refId": "C",
+                "type": "threshold"
+              }
+            }
+          ],
+          "noDataState": "NoData",
+          "execErrState": "Error",
+          "annotations": {
+            "summary": "[{{ $labels.environment }}] {{ $labels.method }} {{ $labels.uri }} HTTP 5xx",
+            "description": "최근 5분 HTTP 5xx={{ printf \"%.0f\" $values.A.Value }}건. 같은 환경·API의 실패 요청 표에서 traceId를 눌러 원문 로그를 확인하세요.",
+            "runbook_url": "https://monitoring.bokduckbang.com/d/toadzip-api-load-test?var-environment={{ $labels.environment }}&var-scope=/api/.*&var-method={{ $labels.method }}&var-api={{ $labels.uri | urlquery }}&from=now-30m&to=now"
+          },
+          "labels": {
+            "service": "backend",
+            "severity": "critical"
+          },
+          "isPaused": false,
+          "notification_settings": {
+            "receiver": "team-discord"
+          }
+        },
+        {
+          "uid": "ffzwnhv1aehvke",
+          "title": "API p95 latency high",
+          "condition": "C",
+          "data": [
+            {
+              "refId": "A",
+              "relativeTimeRange": {
+                "from": 600,
+                "to": 0
+              },
+              "datasourceUid": "prometheus",
+              "model": {
+                "editorMode": "code",
+                "exemplar": false,
+                "expr": "histogram_quantile(0.95, sum by (environment, method, uri, le) (rate(http_server_requests_seconds_bucket{job=\"backend\",environment=~\"dev|prod\",uri=~\"/api/.*\",uri!=\"/api/health\"}[5m])))",
+                "instant": true,
+                "intervalMs": 1000,
+                "legendFormat": "__auto",
+                "maxDataPoints": 43200,
+                "range": false,
+                "refId": "A"
+              }
+            },
+            {
+              "refId": "C",
+              "queryType": "expression",
+              "relativeTimeRange": {
+                "from": 0,
+                "to": 0
+              },
+              "datasourceUid": "__expr__",
+              "model": {
+                "conditions": [
+                  {
+                    "evaluator": {
+                      "params": [
+                        1
+                      ],
+                      "type": "gt"
+                    },
+                    "operator": {
+                      "type": "and"
+                    },
+                    "query": {
+                      "params": [
+                        "C"
+                      ]
+                    },
+                    "reducer": {
+                      "params": [],
+                      "type": "last"
+                    },
+                    "type": "query"
+                  }
+                ],
+                "datasource": {
+                  "type": "__expr__",
+                  "uid": "__expr__"
+                },
+                "expression": "A",
+                "intervalMs": 1000,
+                "maxDataPoints": 43200,
+                "refId": "C",
+                "type": "threshold"
+              }
+            }
+          ],
+          "noDataState": "NoData",
+          "execErrState": "Error",
+          "for": "2m",
+          "keepFiringFor": "2m",
+          "annotations": {
+            "summary": "[{{ $labels.environment }}] {{ $labels.method }} {{ $labels.uri }} p95 지연",
+            "description": "최근 5분 p95={{ printf \"%.3f\" $values.A.Value }}초. 1초 초과가 2분간 지속되었습니다. 대시보드에서 같은 환경·API의 요청, DB 연결풀과 외부 호출을 확인하세요.",
+            "runbook_url": "https://monitoring.bokduckbang.com/d/toadzip-api-load-test?var-environment={{ $labels.environment }}&var-scope=/api/.*&var-method={{ $labels.method }}&var-api={{ $labels.uri | urlquery }}&from=now-30m&to=now"
+          },
+          "labels": {
+            "service": "backend",
+            "severity": "warning"
+          },
+          "isPaused": false,
+          "notification_settings": {
+            "receiver": "team-discord"
+          }
+        }
+      ]
+    }
+  ]
+}

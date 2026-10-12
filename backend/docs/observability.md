@@ -20,6 +20,12 @@
 - 고유 사용자·주택 ID처럼 cardinality가 큰 값을 label로 쓰지 않는다.
 - SLO가 정해지지 않은 임의 임계치를 성공 기준으로 만들지 않는다.
 
+현재 API·부하테스트 대시보드의 사용·검증은 [모니터링 서버 설정](../../docs/MONITORING_SERVER_SETUP.md)을 따른다.
+HTTP 요청과 DB 연결풀·GC를 먼저 비교하고, 요청 표의 traceId로 같은 시간대의 원문 로그를 조회한다.
+네이버 HTTP 호출은 공통 `RestClientConfiguration`의 관측 가능한 Builder를 사용한다.
+기존 연결·읽기 timeout을 유지하며 검색어·인증정보·응답 본문은 메트릭 라벨과 실패 로그에서 제외한다.
+외부 실패 로그의 `failure`는 configuration·upstream_http·timeout·io·invalid_response를 구분한다.
+
 ## 트레이스
 
 ```text

@@ -7,8 +7,20 @@ discovery.relabel "backend" {
 
   rule {
     source_labels = ["__meta_docker_container_label_com_docker_compose_service"]
-    regex         = "backend"
+    regex         = "backend|frontend"
     action        = "keep"
+  }
+
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_compose_service"]
+    target_label  = "service"
+  }
+
+  rule {
+    source_labels = ["service"]
+    regex         = "frontend"
+    target_label  = "service"
+    replacement   = "nginx"
   }
 
   rule {
@@ -23,8 +35,27 @@ loki.source.docker "backend" {
   targets    = discovery.relabel.backend.output
   labels     = {
     environment = sys.env("DEPLOY_ENVIRONMENT"),
-    service     = "backend",
   }
+  forward_to = [loki.process.application.receiver]
+}
+
+loki.process "application" {
+  // Nginx stderr can include raw query strings. Only the sanitized access format is forwarded.
+  stage.match {
+    selector = "{service=\"nginx\"} !~ \"^\\\\{\\\"timestamp\\\":.*\\\"event\\\":\\\"proxy.request.completed\\\"\""
+    action   = "drop"
+  }
+
+  stage.match {
+    selector = "{service=\"backend\"}"
+
+    stage.multiline {
+      firstline     = "^\\d{4}-\\d{2}-\\d{2}[T ]\\d{2}:\\d{2}:\\d{2}"
+      max_wait_time = "3s"
+      max_lines     = 256
+    }
+  }
+
   forward_to = [loki.write.monitoring_server.receiver]
 }
 

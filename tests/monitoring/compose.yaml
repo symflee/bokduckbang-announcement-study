@@ -1,0 +1,48 @@
+services:
+  backend:
+    image: postgres:17-alpine
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        sleep 5
+        printf '%s\n' \
+          '2026-10-12T12:00:00Z ERROR 1 --- [backend] [fixture] [traceId=fixture-error] Fixture : event=fixture.failure' \
+          'java.lang.IllegalStateException: fixture failure' \
+          '    at fixture.run(Fixture.java:1)' \
+          '2026-10-12T12:00:01Z INFO 1 --- [backend] [fixture] [traceId=fixture-request] Fixture : event=http.request.completed method=GET uri=/api/v1/fixture/42 status=503 durationMs=1500 route=/api/v1/fixture/{id}' \
+          '2026-10-12T12:00:02Z INFO 1 --- [backend] [fixture] [traceId=fixture-legacy] Fixture : event=http.request.completed method=GET uri=/api/v1/fixture/43 status=200 durationMs=7'
+        sleep 300
+
+  frontend:
+    image: nginx:1.29.5-alpine
+    command: ["nginx", "-g", "daemon off;"]
+    volumes:
+      - ../../frontend/nginx/http.conf:/etc/nginx/nginx.conf:ro
+      - ../../frontend/nginx:/etc/nginx/toadzip:ro
+    ports:
+      - "127.0.0.1:58082:8080"
+
+  loki:
+    image: grafana/loki:3.7.8
+    command: ["-config.file=/etc/loki/loki-config.yml"]
+    volumes:
+      - ../../infra/loki/loki-config.yml:/etc/loki/loki-config.yml:ro
+      - loki_data:/loki
+    ports:
+      - "127.0.0.1:58310:3100"
+
+  alloy:
+    image: grafana/alloy:v1.20.0
+    command: ["run", "--storage.path=/var/lib/alloy/data", "/etc/alloy/config.alloy"]
+    environment:
+      DEPLOY_ENVIRONMENT: dev
+      LOKI_PUSH_URL: http://loki:3100/loki/api/v1/push
+    volumes:
+      - ../../.local/verification/monitoring/fixture.alloy:/etc/alloy/config.alloy:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - alloy_data:/var/lib/alloy/data
+    depends_on: [backend, frontend, loki]
+
+volumes:
+  loki_data:
+  alloy_data:

@@ -14,6 +14,7 @@ import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
+import org.springframework.web.servlet.HandlerMapping;
 
 @Component
 @Order(Ordered.HIGHEST_PRECEDENCE)
@@ -47,14 +48,23 @@ public final class HttpRequestLoggingFilter extends OncePerRequestFilter {
         try {
             long durationMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startedAt);
             LOGGER.info(
-                    "event=http.request.completed method={} uri={} status={} durationMs={}",
+                    "event=http.request.completed method={} uri={} status={} durationMs={} route={}",
                     request.getMethod(),
                     request.getRequestURI(),
                     response.getStatus(),
-                    durationMs
+                    durationMs,
+                    routeOf(request)
             );
         } finally {
             MDC.remove(TRACE_ID);
         }
+    }
+
+    private String routeOf(HttpServletRequest request) {
+        Object pattern = request.getAttribute(HandlerMapping.BEST_MATCHING_PATTERN_ATTRIBUTE);
+        if (pattern instanceof String route && !route.isBlank()) {
+            return route;
+        }
+        return request.getRequestURI();
     }
 }
