@@ -33,7 +33,7 @@ class ShAnnouncementStoreTest {
         entityManager.clear();
 
         assertThat(repository.findAll()).singleElement().satisfies(source -> {
-            assertThat(source.getSourceKey()).isEqualTo("SH:m_247:100");
+            assertThat(source.getSourceKey()).isEqualTo("SH:100");
             assertThat(source.getTitle()).isEqualTo("정정 제목");
             assertThat(source.getCollectedAt()).isEqualTo(FIRST.plusSeconds(60));
             assertThat(source.getBodyText()).isEqualTo("정정 원문");
@@ -48,7 +48,7 @@ class ShAnnouncementStoreTest {
         store(FIRST.plusSeconds(60)).store(snapshot("100", "제목", "원문"));
 
         assertThat(repository.count()).isEqualTo(2);
-        assertThat(repository.findBySourceKey("SH:m_247:200").orElseThrow().getCollectedAt()).isEqualTo(FIRST);
+        assertThat(repository.findBySourceKey("SH:200").orElseThrow().getCollectedAt()).isEqualTo(FIRST);
     }
 
     private ShAnnouncementStore store(Instant now) {

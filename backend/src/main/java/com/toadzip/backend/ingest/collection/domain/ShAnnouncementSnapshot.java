@@ -16,6 +16,6 @@ public record ShAnnouncementSnapshot(
     }
 
     public String sourceKey() {
-        return "SH:m_247:" + seq;
+        return "SH:" + seq;
     }
 }

@@ -1,584 +1,308 @@
-<!doctype html><html><body><nav>사이트 메뉴</nav>
-<form name="mainform" id="mainform" action="./list.do" method="post" onsubmit="$('#page').val(1); return true;">
-		<input type="hidden" name="page" id="page" value="1">
-		<input type="hidden" name="seq" id="seq" value="">
-		<input type="hidden" name="itm_seq_1" id="itm_seq_1" value="1">
-
-		<input type="hidden" name="multi_itm_seq" value="0">
-		<input type="hidden" name="multi_itm_seqsStr" value="1,2,4,8,16,32,64,128,256,512,1024">
-		<input type="hidden" name="isRecrnoti" id="isRecrnoti" value="">
-
-				<!--보도자료, 해명자료 등록일자로 검색하도록 추가 -->
-
-				<!-- 공고및 공지 -->
-
-				<!-- 검색 옵션 -->
-				<div class="box-toggle on">
-					<div class="tit">
-						<button type="button" class="toggle">검색옵션 닫기</button>
-					</div>
-
-					<div class="cont" style="display: block;">
-						<div class="board-form">
-							<!-- 주택임대 선택시 -->
-							<table>
-								<caption id="searchCaption">공지분류, 공지유형, 등록기간, 검색어 항목을 가진 검색 옵션 표</caption>
-								<colgroup id="searchColgroup">
-
-									<col style="width:120px;">
-									<col>
-								</colgroup>
-								<tbody>
-									<tr>
-										<th scope="row">공지분류</th>
-										<td id="notType1Tr">
-											<select id="notType1" name="notType1" title="공지분류 선택" class="sel01" onchange="searchFormReset();searchFormChange($(this).val());">
-												<option value="0">전체</option>
-												<option value="1">주택분양</option>
-												<option value="2">주택임대</option>
-												<option value="3">주택매입</option>
-												<option value="4">입주안내</option>
-												<option value="5">토지</option>
-												<option value="6">상가/공장</option>
-												<option value="7">보상/이주</option>
-												<option value="8">현상설계</option>
-												<option value="9">기타</option>
-											</select>
-
-											<select id="splyTy" name="splyTy" title="주택임대 종류 선택" class="sel01" style="display:none">
-												<option value="">전체</option>
-
-													<option value="02">국민공공임대주택</option>
-
-													<option value="03">장기전세주택</option>
-
-													<option value="04">매입임대주택</option>
-
-													<option value="05">장기안심주택</option>
-
-													<option value="06">희망하우징</option>
-
-													<option value="07">행복주택</option>
-
-													<option value="10">청년안심주택</option>
-
-													<option value="20">전세임대</option>
-
-													<option value="22">영구임대주택</option>
-
-													<option value="23">재개발임대주택</option>
-
-													<option value="11">두레주택</option>
-
-													<option value="12">사회주택</option>
-
-													<option value="13">도시형생활주택</option>
-
-													<option value="14">수요자맞춤형</option>
-
-											</select>
-										</td>
-									</tr>
-									<tr id="annTypeTr">
-										<th scope="row" id="annTypeTh1">공지유형</th>
-										<td id="annTypeTd1">
-											<div class="checkBox">
-												<span class="bg-chk">
-													<input type="radio" id="annType1All" name="annType1" checked="checked">
-													<label for="annType1All">전체공고</label>
-												</span>
-
-												<span class="bg-chk">
-													<input type="radio" id="annType1Now" name="annType1" checked="checked">
-													<label for="annType1Now">모집공고</label>
-												</span>
-											</div>
-										</td>
-
-									</tr>
-									<tr id="srchTimeTr">
-										<th scope="row" id="srchTh">등록기간</th>
-										<td>
-											<div class="datepicker">
-												<span><input id="srchFr" name="srchFr" type="text" title="등록기간 시작 년월일 입력. 예) 2021-01-01" placeholder=""></span>
-												<span><input id="srchTo" name="srchTo" type="text" title="등록기간 끝 년월일 입력. 예) 2021-01-01" placeholder=""></span>
-											</div>
-										</td>
-
-									</tr>
-									<tr>
-										<th scope="row">검색어</th>
-										<td id="srchTd">
-											<div class="srch srch100">
-												<select name="srchTp" id="s_keyword" title="검색목록선택">
-													<option value="0" selected="selected">제목</option>
-													<option value="1">내용</option>
-													<option value="3">담당부서</option>
-													<option value="10">전체</option>
-												</select>
-												<input type="text" value="모집" name="srchWord" id="srchWord" title="검색어 입력" placeholder="검색어 입력" class="input-text">
-											</div>
-										</td>
-									</tr>
-								</tbody>
-							</table>
-							<!--// 주택임대 검색시 -->
-
-							<div class="btn-area">
-								<a href="javascript:void(0);" class="btn btnGreen" onclick="appendSearch();">조회</a>
-								<a href="javascript:void(0);" class="btn btnGray" onclick="searchFormReset();">초기화</a>
-							</div>
-						</div>
-					</div>
-
-				</div>
-				<!--// 검색 옵션 -->
-
-				<!-- faq만 따로 -->
-
-				<!--// 검색 영역 -->
-
-				<!-- 테이블 탑 -->
-				<div class="topTxt">
-					<div class="mentcount">총 <strong class="cBrown bold">452</strong> 건 [1/46페이지]</div>
-
-					</div>
-
-		</form>
+<!doctype html>
+<html><head></head><body>
+<form id="mainform">
+<input name="itm_seq_1" id="itm_seq_1" value="1">
+<input value="모집" name="srchWord" id="srchWord" class="input-text">
+<input name="multi_itm_seqsStr" value="1,2,4,8,16,32,64,128,256,512,1024">
 <div class="topTxt">
-					<p><span class="bold">검색</span> : 총 <strong class="cBrown bold">529</strong> 건 [1/53페이지]</p>
-				</div>
+<div class="mentcount">총 <strong class="cBrown bold">452</strong> 건 [1/46페이지]</div>
+
+</div>
+</form>
+<div class="topTxt">
+<p><span class="bold">검색</span> : 총 <strong class="cBrown bold">529</strong> 건 [1/53페이지]</p>
+</div>
 <div id="listTb" class="listTable colRm">
-							<table>
-								<!-- 캡션 -->
-								<caption>
+<table>
 
-									공고 및 공지 목록
-								</caption>
+<caption>
 
-									<!-- 번호 -->
+공고 및 공지 목록
+</caption>
 
-								<!-- 제목 -->
+<tbody>
 
-									<!-- 부서명 -->
+<tr>
 
-									<!-- 등록일  -->
+<td>452</td>
 
-									<!-- 조회수  -->
-									 <!-- 조회수는 글번호와 같이 빠진다  -->
+<td class="txtL">
 
-								<!-- 반응형으로 삭제되는 컬럼 지정 -->
+<a href="#" class="ellipsis " onclick="javascript:getDetailView('311087');return false;">
 
-											<script>$(function(){ $("#listTb").addClass("col1  col4 col5   col3"); });</script>
+강동구 청년창업가,예술인주택(수요자맞춤형) 잔여세대 모집 공고
 
-														<script>$(function(){ $("#listTb").removeClass("col4"); });</script>
+</a>
 
-								<colgroup>
+</td>
 
-										<col style="width :10%">
-									<!-- 번호 -->
+<td>
+매입주택공급부
+</td>
 
-									<col style="width: auto">
-									<!-- 제목 -->
+<td class="num">
 
-										<col style="width :160px">
-									<!-- 부서명 -->
+2026-10-08
 
-										<col style="width :100px">
-									<!-- 작성일 -->
+</td>
 
-										<col style="width :80px">
-									<!-- 조회수 -->
+<td class="num">4543</td>
 
-								</colgroup>
-								<thead>
+</tr>
 
-									<tr>
+<tr>
 
-											<th scope="col">번호</th>
-										<!-- 번호 -->
+<td>451</td>
 
-											<th scope="col">제목</th>
-										<!-- 제목 -->
+<td class="txtL">
 
-										<!-- bckang 리스트에서 첨부파일 삭제 -->
+<a href="#" class="ellipsis " onclick="javascript:getDetailView('311200');return false;">
 
-											<th scope="col">담당부서</th>
-										<!-- 부서명 -->
+2026년 재개발임대 모집공고(2026.9.9.공고) 1순위 청약접수 결과 및 2순위 청약접수 안내
 
-											<th scope="col">등록일</th>
-										<!-- 작성일 -->
+</a>
 
-											<th scope="col">조회수</th>
-										<!-- 조회수 -->
+</td>
 
-									</tr>
+<td>
+주택공급기준부
+</td>
 
-								</thead>
-								<tbody>
-								<!-- 공지여부 -->
+<td class="num">
 
-									<tr>
+2026-10-08
 
-											<td>452</td>
-											<!-- 번호 -->
+</td>
 
-										<td class="txtL">
+<td class="num">14898</td>
 
-												<a href="#" class="ellipsis " onclick="javascript:getDetailView('311087');return false;">
+</tr>
 
-											강동구 청년창업가,예술인주택(수요자맞춤형) 잔여세대 모집 공고
+<tr>
 
-												</a>
+<td>450</td>
 
-										</td>
-										<!-- 제목 -->
+<td class="txtL">
 
-										<!-- 첨부파일 Start -->
+<a href="#" class="ellipsis " onclick="javascript:getDetailView('310653');return false;">
 
-										<!-- 첨부파일 End -->
+2026년 하반기 신혼·신생아 매입임대주택Ⅱ 입주자 모집공고(2026.09.30.)
 
-											<td>
-												매입주택공급부
-											</td>
-											<!-- 부서명 -->
+</a>
 
-													<td class="num">
+</td>
 
-															2026-10-08
+<td>
+매입주택공급부
+</td>
 
-													</td>
+<td class="num">
 
-											<td class="num">4543</td>
-											<!-- 조회수 -->
+2026-09-30
 
-									</tr>
+</td>
 
-									<tr>
+<td class="num">25521</td>
 
-											<td>451</td>
-											<!-- 번호 -->
+</tr>
 
-										<td class="txtL">
+<tr>
 
-												<a href="#" class="ellipsis " onclick="javascript:getDetailView('311200');return false;">
+<td>449</td>
 
-											2026년 재개발임대 모집공고(2026.9.9.공고) 1순위 청약접수 결과 및 2순위 청약접수 안내
+<td class="txtL">
 
-												</a>
+<a href="#" class="ellipsis " onclick="javascript:getDetailView('310650');return false;">
 
-										</td>
-										<!-- 제목 -->
+2026년 하반기 신혼·신생아 매입임대주택Ⅰ 입주자 모집공고(2026.09.30.)
 
-										<!-- 첨부파일 Start -->
+</a>
 
-										<!-- 첨부파일 End -->
+</td>
 
-											<td>
-												주택공급기준부
-											</td>
-											<!-- 부서명 -->
+<td>
+매입주택공급부
+</td>
 
-													<td class="num">
+<td class="num">
 
-															2026-10-08
+2026-09-30
 
-													</td>
+</td>
 
-											<td class="num">14898</td>
-											<!-- 조회수 -->
+<td class="num">23309</td>
 
-									</tr>
+</tr>
 
-									<tr>
+<tr>
 
-											<td>450</td>
-											<!-- 번호 -->
+<td>448</td>
 
-										<td class="txtL">
+<td class="txtL">
 
-												<a href="#" class="ellipsis " onclick="javascript:getDetailView('310653');return false;">
+<a href="#" class="ellipsis " onclick="javascript:getDetailView('310673');return false;">
 
-											2026년 하반기 신혼·신생아 매입임대주택Ⅱ 입주자 모집공고(2026.09.30.)
+2026년 신정도시마을 잔여세대 입주자모집공고(26. 9. 23.)
 
-												</a>
+</a>
 
-										</td>
-										<!-- 제목 -->
+</td>
 
-										<!-- 첨부파일 Start -->
+<td>
+맞춤주택공급부
+</td>
 
-										<!-- 첨부파일 End -->
+<td class="num">
 
-											<td>
-												매입주택공급부
-											</td>
-											<!-- 부서명 -->
+2026-09-23
 
-													<td class="num">
+</td>
 
-															2026-09-30
+<td class="num">36607</td>
 
-													</td>
+</tr>
 
-											<td class="num">25521</td>
-											<!-- 조회수 -->
+<tr>
 
-									</tr>
+<td>447</td>
 
-									<tr>
+<td class="txtL">
 
-											<td>449</td>
-											<!-- 번호 -->
+<a href="#" class="ellipsis " onclick="javascript:getDetailView('310258');return false;">
 
-										<td class="txtL">
+2026년 2차 희망하우징(공공기숙사) 입주자 모집공고(2026. 9. 17.)
 
-												<a href="#" class="ellipsis " onclick="javascript:getDetailView('310650');return false;">
+</a>
 
-											2026년 하반기 신혼·신생아 매입임대주택Ⅰ 입주자 모집공고(2026.09.30.)
+</td>
 
-												</a>
+<td>
+맞춤주택공급부
+</td>
 
-										</td>
-										<!-- 제목 -->
+<td class="num">
 
-										<!-- 첨부파일 Start -->
+2026-09-17
 
-										<!-- 첨부파일 End -->
+</td>
 
-											<td>
-												매입주택공급부
-											</td>
-											<!-- 부서명 -->
+<td class="num">29189</td>
 
-													<td class="num">
+</tr>
 
-															2026-09-30
+<tr>
 
-													</td>
+<td>446</td>
 
-											<td class="num">23309</td>
-											<!-- 조회수 -->
+<td class="txtL">
 
-									</tr>
+<a href="#" class="ellipsis " onclick="javascript:getDetailView('310391');return false;">
 
-									<tr>
+2026년 2차 임대상가 재공급 모집공고
 
-											<td>448</td>
-											<!-- 번호 -->
+</a>
 
-										<td class="txtL">
+</td>
 
-												<a href="#" class="ellipsis " onclick="javascript:getDetailView('310673');return false;">
+<td>
+복합시설운영관리부
+</td>
 
-											2026년 신정도시마을 잔여세대 입주자모집공고(26. 9. 23.)
+<td class="num">
 
-												</a>
+2026-09-16
 
-										</td>
-										<!-- 제목 -->
+</td>
 
-										<!-- 첨부파일 Start -->
+<td class="num">5929</td>
 
-										<!-- 첨부파일 End -->
+</tr>
 
-											<td>
-												맞춤주택공급부
-											</td>
-											<!-- 부서명 -->
+<tr>
 
-													<td class="num">
+<td>445</td>
 
-															2026-09-23
+<td class="txtL">
 
-													</td>
+<a href="#" class="ellipsis " onclick="javascript:getDetailView('310041');return false;">
 
-											<td class="num">36607</td>
-											<!-- 조회수 -->
+2026년 재개발임대주택 일반모집 공고(2026. 9. 9.)
 
-									</tr>
+</a>
 
-									<tr>
+</td>
 
-											<td>447</td>
-											<!-- 번호 -->
+<td>
+주택공급기준부
+</td>
 
-										<td class="txtL">
+<td class="num">
 
-												<a href="#" class="ellipsis " onclick="javascript:getDetailView('310258');return false;">
+2026-09-09
 
-											2026년 2차 희망하우징(공공기숙사) 입주자 모집공고(2026. 9. 17.)
+</td>
 
-												</a>
+<td class="num">276200</td>
 
-										</td>
-										<!-- 제목 -->
+</tr>
 
-										<!-- 첨부파일 Start -->
+<tr>
 
-										<!-- 첨부파일 End -->
+<td>444</td>
 
-											<td>
-												맞춤주택공급부
-											</td>
-											<!-- 부서명 -->
+<td class="txtL">
 
-													<td class="num">
+<a href="#" class="ellipsis " onclick="javascript:getDetailView('309467');return false;">
 
-															2026-09-17
+제51차 장기전세주택 입주자 모집공고(2026.08.31.공고)
 
-													</td>
+</a>
 
-											<td class="num">29189</td>
-											<!-- 조회수 -->
+</td>
 
-									</tr>
+<td>
+미리내집공급부
+</td>
 
-									<tr>
+<td class="num">
 
-											<td>446</td>
-											<!-- 번호 -->
+2026-08-31
 
-										<td class="txtL">
+</td>
 
-												<a href="#" class="ellipsis " onclick="javascript:getDetailView('310391');return false;">
+<td class="num">302440</td>
 
-											2026년 2차 임대상가 재공급 모집공고
+</tr>
 
-												</a>
+<tr>
 
-										</td>
-										<!-- 제목 -->
+<td>443</td>
 
-										<!-- 첨부파일 Start -->
+<td class="txtL">
 
-										<!-- 첨부파일 End -->
+<a href="#" class="ellipsis " onclick="javascript:getDetailView('310107');return false;">
 
-											<td>
-												복합시설운영관리부
-											</td>
-											<!-- 부서명 -->
+(수정) 2026년 2차 장기미임대 매입임대주택 입주자모집공고(2026. 8. 28.)
 
-													<td class="num">
+</a>
 
-															2026-09-16
+</td>
 
-													</td>
+<td>
+매입주택공급부
+</td>
 
-											<td class="num">5929</td>
-											<!-- 조회수 -->
+<td class="num">
 
-									</tr>
+2026-08-28
 
-									<tr>
+</td>
 
-											<td>445</td>
-											<!-- 번호 -->
+<td class="num">151907</td>
 
-										<td class="txtL">
+</tr>
 
-												<a href="#" class="ellipsis " onclick="javascript:getDetailView('310041');return false;">
-
-											2026년 재개발임대주택 일반모집 공고(2026. 9. 9.)
-
-												</a>
-
-										</td>
-										<!-- 제목 -->
-
-										<!-- 첨부파일 Start -->
-
-										<!-- 첨부파일 End -->
-
-											<td>
-												주택공급기준부
-											</td>
-											<!-- 부서명 -->
-
-													<td class="num">
-
-															2026-09-09
-
-													</td>
-
-											<td class="num">276200</td>
-											<!-- 조회수 -->
-
-									</tr>
-
-									<tr>
-
-											<td>444</td>
-											<!-- 번호 -->
-
-										<td class="txtL">
-
-												<a href="#" class="ellipsis " onclick="javascript:getDetailView('309467');return false;">
-
-											제51차 장기전세주택 입주자 모집공고(2026.08.31.공고)
-
-												</a>
-
-										</td>
-										<!-- 제목 -->
-
-										<!-- 첨부파일 Start -->
-
-										<!-- 첨부파일 End -->
-
-											<td>
-												미리내집공급부
-											</td>
-											<!-- 부서명 -->
-
-													<td class="num">
-
-															2026-08-31
-
-													</td>
-
-											<td class="num">302440</td>
-											<!-- 조회수 -->
-
-									</tr>
-
-									<tr>
-
-											<td>443</td>
-											<!-- 번호 -->
-
-										<td class="txtL">
-
-												<a href="#" class="ellipsis " onclick="javascript:getDetailView('310107');return false;">
-
-											(수정) 2026년 2차 장기미임대 매입임대주택 입주자모집공고(2026. 8. 28.)
-
-												</a>
-
-										</td>
-										<!-- 제목 -->
-
-										<!-- 첨부파일 Start -->
-
-										<!-- 첨부파일 End -->
-
-											<td>
-												매입주택공급부
-											</td>
-											<!-- 부서명 -->
-
-													<td class="num">
-
-															2026-08-28
-
-													</td>
-
-											<td class="num">151907</td>
-											<!-- 조회수 -->
-
-									</tr>
-
-								</tbody>
-							</table>
-						</div>
-<footer>사이트 푸터</footer></body></html>
+</tbody>
+</table>
+</div>
+</body></html>

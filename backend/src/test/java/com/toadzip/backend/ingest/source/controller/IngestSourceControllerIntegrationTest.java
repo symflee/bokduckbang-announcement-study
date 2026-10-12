@@ -160,7 +160,7 @@ class IngestSourceControllerIntegrationTest {
         jdbc.sql("""
                 INSERT INTO sh_announcement_source (source_key,seq,title,department,registered_date,
                 original_url,list_url,collected_at)
-                VALUES ('SH:m_247:100','100','두꺼비 SH 공고','공급부','2026-10-02',
+                VALUES ('SH:100','100','두꺼비 SH 공고','공급부','2026-10-02',
                 'https://www.i-sh.co.kr/app/lay2/program/S48T561C563/www/brd/m_247/view.do?seq=100&multi_itm_seq=2',
                 'https://www.i-sh.co.kr/app/lay2/program/S48T561C563/www/brd/m_247/list.do?multi_itm_seq=2',
                 :collectedAt)
@@ -282,7 +282,7 @@ class IngestSourceControllerIntegrationTest {
     void 기존_SH_원천은_HTML_없이_재수집_전_내용이_비어있다() throws Exception {
         mockMvc.perform(get(ENDPOINT).with(user("admin").roles("ADMIN")).param("category", "SH_ANNOUNCEMENT"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.items[0].sourceKey").value("SH:m_247:100"))
+                .andExpect(jsonPath("$.data.items[0].sourceKey").value("SH:100"))
                 .andExpect(jsonPath("$.data.items[0].sourceUpdatedAt").doesNotExist())
                 .andExpect(jsonPath("$.data.items[0].raw.raw_list_html").doesNotExist())
                 .andExpect(jsonPath("$.data.items[0].raw.detail_fragment_html").doesNotExist())
@@ -295,7 +295,7 @@ class IngestSourceControllerIntegrationTest {
         jdbc.sql("""
                 UPDATE sh_announcement_source SET body_text = '본문',
                 attachments = '[{"oriFileNm":"공고문.pdf","fileSeq":"7"}]'
-                WHERE source_key = 'SH:m_247:100'
+                WHERE source_key = 'SH:100'
                 """).update();
         mockMvc.perform(get(ENDPOINT).with(user("admin").roles("ADMIN")).param("category", "SH_ANNOUNCEMENT"))
                 .andExpect(status().isOk())

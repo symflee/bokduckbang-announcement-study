@@ -50,14 +50,14 @@ class ShAnnouncementCollectionIntegrationTest {
         long housingCount = count("housing_complexes");
 
         assertThat(service.collect().storedRowCount()).isOne();
-        var first = sources.findBySourceKey("SH:m_247:310653").orElseThrow();
+        var first = sources.findBySourceKey("SH:310653").orElseThrow();
         Long sourceId = first.getId();
         assertThat(first.getBodyText()).contains("신혼", "신생아").doesNotContain("<table", "\t", "\r");
         assertThat(first.getAttachments()).contains("fileSeq", "공고문");
 
         when(externalRepository.fetchDetail("310653")).thenReturn("<html>변경된 구조</html>");
         assertThat(service.collect().failedRequestCount()).isOne();
-        var preserved = sources.findBySourceKey("SH:m_247:310653").orElseThrow();
+        var preserved = sources.findBySourceKey("SH:310653").orElseThrow();
         assertThat(preserved.getBodyText()).isEqualTo(first.getBodyText());
         assertThat(preserved.getAttachments()).isEqualTo(first.getAttachments());
         assertThat(preserved.getCollectedAt()).isEqualTo(first.getCollectedAt());
@@ -66,7 +66,7 @@ class ShAnnouncementCollectionIntegrationTest {
 
         doReturn(detail).when(externalRepository).fetchDetail("310653");
         assertThat(service.collect().failedRequestCount()).isZero();
-        var refreshed = sources.findBySourceKey("SH:m_247:310653").orElseThrow();
+        var refreshed = sources.findBySourceKey("SH:310653").orElseThrow();
         assertThat(refreshed.getId()).isEqualTo(sourceId);
         assertThat(refreshed.getBodyText()).isEqualTo(first.getBodyText());
         assertThat(failures.findAllBySourceAndRequestDescriptionAndStatus(
