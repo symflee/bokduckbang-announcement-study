@@ -307,6 +307,25 @@ describe('PublicHousingExplorer', () => {
       expect(screen.getByText('카메라 35.18,129.07')).toBeVisible()
     })
 
+    it.each(['/explore', '/explore?complexId=17'])('안내를 생략한 탐색 경로 %s에서도 위치 링크 우선순위를 유지한다', async entry => {
+      localStorage.clear()
+      const repository = createRepository()
+      render(
+        <MemoryRouter initialEntries={[entry]}>
+          <PublicHousingExplorer showWelcome={false} repository={repository} mapRepository={repository} />
+        </MemoryRouter>,
+      )
+      expect(screen.queryByRole('dialog', { name: /살고 싶은 동네/ })).not.toBeInTheDocument()
+      if (entry.includes('complexId')) {
+        await act(async () => {})
+        expect(getCurrentPosition).not.toHaveBeenCalled()
+      } else {
+        await waitFor(() => expect(getCurrentPosition).toHaveBeenCalledOnce())
+        act(() => success(position))
+        expect(screen.getByText('카메라 35.18,129.07')).toBeVisible()
+      }
+    })
+
     it('첫 방문 안내에서 선택한 지역을 현재 위치로 덮어쓰지 않는다', async () => {
       localStorage.clear()
       renderExplorer(createRepository())

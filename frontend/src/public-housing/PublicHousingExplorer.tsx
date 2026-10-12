@@ -155,6 +155,7 @@ interface PendingListFocus {
 }
 
 export interface PublicHousingExplorerProps {
+  showWelcome?: boolean
   boundaryRepository?: RegionBoundaryRepository
   mapRepository: HousingMapRepository
   regionRepository?: PublicHousingRegionRepository
@@ -178,6 +179,7 @@ const INITIAL_ANNOUNCEMENT_DETAIL: AnnouncementDetailState = {
 }
 
 export function PublicHousingExplorer({
+  showWelcome = true,
   boundaryRepository = regionBoundaryRepository,
   mapRepository,
   regionRepository = publicHousingRegionRepository,
@@ -223,7 +225,7 @@ export function PublicHousingExplorer({
   const [recentComplexes, setRecentComplexes] = useState(readRecentComplexes)
   const [clusterTransitioning, setClusterTransitioning] = useState(false)
   const [cameraRequestId, setCameraRequestId] = useState(0)
-  const welcomeVisible = !['required', 'failed'].includes(new URLSearchParams(location.search).get('login') ?? '')
+  const welcomeVisible = showWelcome && !['required', 'failed'].includes(new URLSearchParams(location.search).get('login') ?? '')
   const [welcomeReady, setWelcomeReady] = useState(!welcomeVisible)
   const markWelcomeReady = useCallback(() => setWelcomeReady(true), [])
   const [autoLocationAllowed] = useState(() => {

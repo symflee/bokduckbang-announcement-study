@@ -194,8 +194,8 @@ OAuth를 이번 작업 때문에 활성화할 필요는 없다.
 
 ```dotenv
 USER_OAUTH_REDIRECT_BASE_URL=https://dev.bokduckbang.com
-USER_OAUTH_SUCCESS_URL=https://dev.bokduckbang.com/login
-USER_OAUTH_FAILURE_URL=https://dev.bokduckbang.com/login?login=failed
+USER_OAUTH_SUCCESS_URL=https://dev.bokduckbang.com/explore
+USER_OAUTH_FAILURE_URL=https://dev.bokduckbang.com/explore?login=failed
 ```
 
 사용 중인 Google·Kakao 콘솔에도 각각 `https://도메인/api/auth/oauth2/callback/google`,

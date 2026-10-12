@@ -49,7 +49,7 @@ beforeEach(() => {
   vi.stubEnv('VITE_ANALYTICS_ENV', 'dev'); vi.stubEnv('VITE_POSTHOG_LOCAL_ENABLED', 'true'); vi.stubEnv('MODE', 'development')
   lockRequest.mockReset().mockImplementation(async (_name, callback) => callback())
   Object.defineProperty(navigator, 'locks', { configurable: true, value: { request: lockRequest } })
-  localStorage.clear(); sessionStorage.clear(); window.history.replaceState({}, '', '/')
+  localStorage.clear(); sessionStorage.clear(); window.history.replaceState({}, '', '/explore')
   const add = window.addEventListener.bind(window)
   vi.spyOn(window, 'addEventListener').mockImplementation((type, listener, options) => {
     if (type === 'storage' && listener) storageListeners.push(listener)

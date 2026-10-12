@@ -58,7 +58,7 @@ export function GuestCancellationPage() {
 
   return <main className={`${styles.page} ph-no-capture`}>
     <div className={styles.card}>
-      <Link className={styles.back} to="/">← 지도로 돌아가기</Link>
+      <Link className={styles.back} to="/explore">← 지도로 돌아가기</Link>
       <span className={styles.eyebrow}>이메일 알림</span>
       <h1>비로그인 알림 신청 취소</h1>
       {finished ? <p role="status">해당 이메일로 신청한 비로그인 알림을 모두 취소하고 알림용 이메일을 삭제했어요.</p> : <>

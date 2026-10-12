@@ -42,7 +42,7 @@ function Probe({ location, ready }: { location: DetailLocationResult; ready: str
   if (location.kind !== 'complex' && location.kind !== 'announcement') return null
   return <dialog open className="housing-detail-layer" aria-label={location.kind === 'complex' ? '단지 상세' : '공고 상세'}><h2>상세</h2></dialog>
 }
-const wrap = ({ children }: { children: React.ReactNode }) => <StrictMode><MemoryRouter>{children}</MemoryRouter></StrictMode>
+const wrap = ({ children }: { children: React.ReactNode }) => <StrictMode><MemoryRouter initialEntries={['/explore']}>{children}</MemoryRouter></StrictMode>
 beforeEach(() => {
   consent.allowed = true
   Object.defineProperty(navigator, 'locks', { configurable: true,
@@ -157,7 +157,7 @@ describe('제품 활성 상세 계측', () => {
     vi.stubEnv('VITE_POSTHOG_LOCAL_ENABLED', 'true')
     vi.stubEnv('MODE', 'development')
     localStorage.clear(); sessionStorage.clear()
-    window.history.replaceState({}, '', '/')
+    window.history.replaceState({}, '', '/explore')
     let firstResponse: (response: Response) => void = () => { throw new Error('request missing') }
     const network = vi.fn<typeof fetch>()
       .mockImplementationOnce(() => new Promise(resolve => { firstResponse = resolve }))

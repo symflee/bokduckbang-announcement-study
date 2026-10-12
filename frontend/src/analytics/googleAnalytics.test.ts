@@ -36,7 +36,7 @@ beforeEach(() => {
   vi.stubEnv('VITE_GA_MEASUREMENT_ID', ID)
   vi.stubEnv('VITE_GA_DEBUG_MODE', '')
   window.localStorage.clear()
-  window.history.replaceState({}, '', '/')
+  window.history.replaceState({}, '', '/explore')
   delete window.dataLayer
   delete window.gtag
   delete window[DISABLE_KEY]
@@ -88,7 +88,7 @@ describe('Google Analytics transport', () => {
     expect(commands()).toContainEqual(['config', ID, expect.objectContaining({ debug_mode: true, send_page_view: false })])
   })
 
-  it.each(['/login', '/admin', '/admin/login', '/other'])(
+  it.each(['/', '/login', '/admin', '/admin/login', '/other'])(
     'does not collect outside the public explorer: %s', async (path) => {
       window.history.replaceState({}, '', path)
       const { trackEvent } = await activeAnalytics()
@@ -98,7 +98,7 @@ describe('Google Analytics transport', () => {
   )
 
   it('loads one tag and only submits sanitized commands after the SDK loads', async () => {
-    window.history.replaceState({}, '', '/?email=private@example.test&utm_source=secret&latitude=37.123#private')
+    window.history.replaceState({}, '', '/explore?email=private@example.test&utm_source=secret&latitude=37.123#private')
     document.title = 'private@example.test'
     vi.spyOn(document, 'referrer', 'get').mockReturnValue('https://user:password@search.example/private?q=secret#private')
     const { trackEvent } = await activeAnalytics()
@@ -273,7 +273,7 @@ describe('Google Analytics transport', () => {
     script().dispatchEvent(new Event('load'))
     expect(commands()).toEqual([])
     expect(window[DISABLE_KEY]).toBe(true)
-    window.history.replaceState({}, '', '/')
+    window.history.replaceState({}, '', '/explore')
     setAnalyticsPageActive(true)
     expect(trackEvent('page_view', {})).toBe(true)
     expect(events()).toHaveLength(1)

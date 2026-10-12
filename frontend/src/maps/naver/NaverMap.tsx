@@ -721,7 +721,7 @@ export default function NaverMap({
     const zoom = Math.max(map.getMinZoom(), Math.min(map.getMaxZoom(), before + delta))
     captureProductEvent('map_zoom_button_clicked', { direction: delta > 0 ? 'in' : 'out', zoom_before: before, zoom_target: zoom })
     zoomSource.current = 'button'
-    map.setZoom(zoom)
+    map.setZoom(zoom, true)
   }
 
   return (

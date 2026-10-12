@@ -35,7 +35,7 @@ beforeEach(() => {
   })
   localStorage.clear()
   sessionStorage.clear()
-  window.history.replaceState({}, '', '/')
+  window.history.replaceState({}, '', '/explore')
   listeners = []
   const add = window.addEventListener.bind(window)
   vi.spyOn(window, 'addEventListener').mockImplementation((type, listener, options) => {
@@ -91,7 +91,7 @@ describe('PostHog privacy and identity boundary', () => {
     expect(sdk.init).not.toHaveBeenCalled()
   })
 
-  it.each(['/admin', '/admin/complexes/1', '/login', '/not-found'])('does not initialize on %s', async path => {
+  it.each(['/', '/admin', '/admin/complexes/1', '/login', '/not-found'])('does not initialize on %s', async path => {
     window.history.replaceState({}, '', path)
     await initialized()
     expect(sdk.init).not.toHaveBeenCalled()
@@ -151,7 +151,7 @@ describe('PostHog privacy and identity boundary', () => {
   })
 
   it('removes query/hash, person properties, contact, precise location and arbitrary fields', async () => {
-    window.history.replaceState({}, '', '/?email=private@example.test&lat=37.123#secret')
+    window.history.replaceState({}, '', '/explore?email=private@example.test&lat=37.123#secret')
     const analytics = await initialized()
     vi.spyOn(document, 'referrer', 'get').mockReturnValue('https://user:password@search.example/private?q=secret')
     const unsafe = captured({
@@ -212,7 +212,7 @@ describe('PostHog privacy and identity boundary', () => {
     await vi.dynamicImportSettled()
     expect(sdk.init).not.toHaveBeenCalled()
 
-    window.history.replaceState({}, '', '/')
+    window.history.replaceState({}, '', '/explore')
     analytics.setProductPageActive(true)
     analytics.captureProductEvent('view_complex', { complex_id: '17' })
     await vi.dynamicImportSettled()

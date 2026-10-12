@@ -507,21 +507,21 @@ describe('NaverMap', () => {
     expect(fakeSdk.destroyMap).toHaveBeenCalledOnce()
   })
 
-  it('확대·축소 버튼으로 현재 지도 배율을 한 단계씩 변경한다', async () => {
+  it('확대·축소 버튼으로 배율 제한 안에서 한 단계씩 부드럽게 변경한다', async () => {
     const fakeSdk = createFakeSdk()
     vi.mocked(loadNaverMapsSdk).mockResolvedValue(fakeSdk.maps)
     render(<NaverMap representation="INDIVIDUAL" markers={[]} />)
 
     fireEvent.click(await screen.findByRole('button', { name: '지도 확대' }))
-    expect(fakeSdk.setZoomMap).toHaveBeenLastCalledWith(15)
+    expect(fakeSdk.setZoomMap).toHaveBeenLastCalledWith(15, true)
     fireEvent.click(screen.getByRole('button', { name: '지도 축소' }))
-    expect(fakeSdk.setZoomMap).toHaveBeenLastCalledWith(14)
+    expect(fakeSdk.setZoomMap).toHaveBeenLastCalledWith(14, true)
     fakeSdk.getMaxZoomMap.mockReturnValue(14)
     fireEvent.click(screen.getByRole('button', { name: '지도 확대' }))
-    expect(fakeSdk.setZoomMap).toHaveBeenLastCalledWith(14)
+    expect(fakeSdk.setZoomMap).toHaveBeenLastCalledWith(14, true)
     fakeSdk.getMinZoomMap.mockReturnValue(14)
     fireEvent.click(screen.getByRole('button', { name: '지도 축소' }))
-    expect(fakeSdk.setZoomMap).toHaveBeenLastCalledWith(14)
+    expect(fakeSdk.setZoomMap).toHaveBeenLastCalledWith(14, true)
   })
 
   it('init 전에 unmount하면 초기화 리스너를 제거하고 bounds를 적용하지 않는다', async () => {

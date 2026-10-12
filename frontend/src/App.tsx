@@ -1,7 +1,7 @@
 import { FailureReviewPage } from './admin/ingest/FailureReviewPage'
 import { AnnouncementRegistrationV2Page } from './admin/ingest/AnnouncementRegistrationV2Page'
 import { SourceDataPage } from './admin/ingest/SourceDataPage'
-import { Link, Navigate, Route, Routes, useLocation } from 'react-router'
+import { Link, Navigate, Route, Routes, matchRoutes, useLocation } from 'react-router'
 import { AdminAuthProvider } from './admin/auth/AdminAuthProvider'
 import { LocationDataPage } from './admin/ingest/LocationDataPage'
 import { ManagementWorkspace } from './admin/management/ManagementWorkspace'
@@ -21,6 +21,20 @@ import { FeedbackPage } from './feedback/FeedbackPage'
 import { FeedbackListPage } from './admin/feedback/FeedbackListPage'
 import { PrivacyBoundary, PrivacyMenu, PrivacyPolicyPage, PrivacySettingsPage } from './privacy/Privacy'
 import { ProductAnalyticsBoundary } from './analytics/ProductAnalyticsBoundary'
+import { LandingPage } from './landing/LandingPage'
+
+function LandingEntry() {
+  const { search, hash } = useLocation()
+  const params = new URLSearchParams(search)
+  // Keep existing detail, filter, map and authentication links usable.
+  const hasExplorerState = Array.from(params.keys()).some((key) =>
+    /^(complex|announcement|map)/.test(key)
+    || key === 'boundaryRegionCode' || key === 'login' || key === 'tab' || key === 'inbox',
+  )
+  return hasExplorerState
+    ? <Navigate to={{ pathname: '/explore', search, hash }} replace />
+    : <LandingPage />
+}
 
 function Home() {
   return (
@@ -28,7 +42,7 @@ function Home() {
       <div className="app-shell">
         <div className="service-rail-brand"><BrandLink /></div>
         <div className="service-rail-account"><PrivacyMenu /><Link className="service-feedback-link" to="/feedback">의견 보내기</Link><NotificationInterestSessionControl presentation="rail" /></div>
-        <main className="map-main"><DefaultPublicHousingExplorer /></main>
+        <main className="map-main"><DefaultPublicHousingExplorer showWelcome={false} /></main>
       </div>
     </NotificationInterestProvider>
   )
@@ -40,7 +54,7 @@ function NotFound() {
       <BrandLink />
       <h1>페이지를 찾을 수 없습니다.</h1>
       <p>입력한 주소를 다시 확인해 주세요.</p>
-      <Link to="/">지도로 돌아가기</Link>
+      <Link to="/explore">지도로 돌아가기</Link>
     </main>
   )
 }
@@ -49,7 +63,7 @@ function LegacyLoginRedirect() {
   const { search, hash } = useLocation()
   const params = new URLSearchParams(search)
   params.set('login', params.get('login') === 'failed' ? 'failed' : 'required')
-  return <Navigate to={{ pathname: '/', search: `?${params}`, hash }} replace />
+  return <Navigate to={{ pathname: '/explore', search: `?${params}`, hash }} replace />
 }
 
 function AdminRoutes() {
@@ -80,18 +94,25 @@ function AdminRoutes() {
 }
 
 export default function App() {
+  const { pathname, search, hash, state } = useLocation()
+  // Use the same matching rules as Routes, including encoded paths, before
+  // mounting privacy and analytics on the canonical public path.
+  if (pathname !== '/explore' && matchRoutes([{ path: '/explore' }], { pathname })) {
+    return <Navigate to={{ pathname: '/explore', search, hash }} state={state} replace />
+  }
   return (
     <>
-    <PrivacyBoundary />
+    {pathname !== '/' && <PrivacyBoundary />}
     <ProductAnalyticsBoundary />
     <Routes>
-      <Route path="/" element={<Home />} />
+      <Route path="/" element={<LandingEntry />} />
+      <Route path="/explore" element={<Home />} />
       <Route path="/privacy" element={<PrivacyPolicyPage />} />
       <Route path="/privacy/:key/:version" element={<PrivacyPolicyPage />} />
       <Route path="/privacy/settings" element={<PrivacySettingsPage />} />
       <Route path="/login" element={<LegacyLoginRedirect />} />
       <Route path="/feedback" element={<FeedbackPage />} />
-      <Route path="/notifications" element={<Navigate to="/?inbox=open" replace />} />
+      <Route path="/notifications" element={<Navigate to="/explore?inbox=open" replace />} />
       <Route path="/mypage/notifications" element={<NotificationPage management />} />
       <Route path="/notifications/cancel" element={<GuestCancellationPage />} />
       <Route path="/admin/*" element={<AdminRoutes />} />

@@ -31,23 +31,26 @@ type LocalSnapshotState =
   | { readonly status: 'error' }
 
 interface LocalPublicHousingExplorerProps {
+  readonly showWelcome?: boolean
   readonly loadSnapshot?: () => Promise<unknown>
   readonly repository?: PublicHousingRepository
 }
 
-export function DefaultPublicHousingExplorer() {
+export function DefaultPublicHousingExplorer({ showWelcome = true }: { readonly showWelcome?: boolean }) {
   if (!localPublicHousingMockEnabled) {
     return (
       <PublicHousingExplorer
+        showWelcome={showWelcome}
         mapRepository={housingMapRepository}
         repository={defaultPublicHousingRepository}
       />
     )
   }
-  return <LocalPublicHousingExplorer />
+  return <LocalPublicHousingExplorer showWelcome={showWelcome} />
 }
 
 export function LocalPublicHousingExplorer({
+  showWelcome = true,
   loadSnapshot = loadLocalPublicHousingMock,
   repository,
 }: LocalPublicHousingExplorerProps) {
@@ -85,6 +88,7 @@ export function LocalPublicHousingExplorer({
   if (state.status === 'ready') {
     return (
       <PublicHousingExplorer
+        showWelcome={showWelcome}
         streetViewSupported={false}
         mapRepository={state.mapRepository}
         regionRepository={state.regionRepository}

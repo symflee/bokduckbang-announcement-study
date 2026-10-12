@@ -36,7 +36,7 @@ beforeEach(() => {
   }))
 })
 afterEach(() => { act(() => consentStore.transition()); vi.unstubAllGlobals() })
-function app(path = '/') { return <MemoryRouter initialEntries={[path]}><PrivacyBoundary /><Routes><Route path="/" element={<PrivacyMenu />} /><Route path="/privacy" element={<PrivacyPolicyPage />} /><Route path="/privacy/:key/:version" element={<PrivacyPolicyPage />} /><Route path="/privacy/settings" element={<PrivacySettingsPage />} /></Routes></MemoryRouter> }
+function app(path = '/explore') { return <MemoryRouter initialEntries={[path]}><PrivacyBoundary /><Routes><Route path="/explore" element={<PrivacyMenu />} /><Route path="/privacy" element={<PrivacyPolicyPage />} /><Route path="/privacy/:key/:version" element={<PrivacyPolicyPage />} /><Route path="/privacy/settings" element={<PrivacySettingsPage />} /></Routes></MemoryRouter> }
 it('안내문 강조를 표시하고 원문 HTML은 실행하지 않는다', () => {
   const { container } = render(<NoticeContent content={'## 이용 정보 안내\n\n개인을 식별할 수 없는 **익명 통계 데이터**로 수집합니다.\n\n<img src=x onerror=alert(1)> **문의**'} />)
   expect(screen.getByText('익명 통계 데이터').tagName).toBe('STRONG')
