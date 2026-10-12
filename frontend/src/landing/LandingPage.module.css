@@ -44,18 +44,17 @@
   font-size: 17px;
   font-weight: var(--ds-weight-strong);
   white-space: nowrap;
-  box-shadow: 0 4px 0 color-mix(in srgb, var(--ds-color-action) 18%, transparent);
-  transition: background 180ms, translate 180ms, scale 180ms, box-shadow 180ms;
+  transition: background 180ms, translate 180ms, scale 180ms;
 }
 .page .start:focus-visible { background: color-mix(in srgb, var(--ds-color-action) 85%, var(--ds-color-on-brand)); }
-.page .start:active { translate: 0 2px; scale: .98; box-shadow: 0 1px 0 color-mix(in srgb, var(--ds-color-action) 18%, transparent); }
+.page .start:active { translate: 0 2px; scale: .98; }
 .start span { display: inline-block; font-size: 23px; font-weight: 400; transition: transform 220ms cubic-bezier(.2,.7,.2,1); }
 .page .start:focus-visible span { transform: translate(3px, -3px); }
 .page .start:active span { transform: translate(1px, -1px); }
 @media (hover: hover) and (pointer: fine) {
-  .page .start:hover { background: color-mix(in srgb, var(--ds-color-action) 85%, var(--ds-color-on-brand)); translate: 0 -2px; box-shadow: 0 7px 18px -7px color-mix(in srgb, var(--ds-color-action) 35%, transparent); }
+  .page .start:hover { background: color-mix(in srgb, var(--ds-color-action) 85%, var(--ds-color-on-brand)); translate: 0 -2px; }
   .page .start:hover span { transform: translate(4px, -4px); }
-  .page .start:active { translate: 0 2px; scale: .98; box-shadow: none; }
+  .page .start:active { translate: 0 2px; scale: .98; }
   .page .start:active span { transform: translate(1px, -1px); }
 }
 .page .compact { min-height: var(--ds-control-height-md); padding: 0 19px; gap: 24px; font-size: 14px; }
