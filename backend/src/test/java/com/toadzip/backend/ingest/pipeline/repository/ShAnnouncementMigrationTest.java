@@ -82,6 +82,27 @@ class ShAnnouncementMigrationTest {
                         VALUES ('SH:m_247:100','100','공고','공급부','2026-10-02',
                         'url','list','list html','detail html',now())
                         """);
+                ScriptUtils.executeSqlScript(connection, new ClassPathResource(
+                        "db/migration/V20261011_01__sh_announcement_content.sql"));
+                try (var rows = statement.executeQuery(
+                        "SELECT source_key, title, body_text, attachments FROM sh_announcement_source")) {
+                    rows.next();
+                    assertThat(rows.getString(1)).isEqualTo("SH:m_247:100");
+                    assertThat(rows.getString(2)).isEqualTo("공고");
+                    assertThat(rows.getString(3)).isNull();
+                    assertThat(rows.getString(4)).isNull();
+                }
+                try (var htmlColumns = statement.executeQuery("""
+                        SELECT count(*) FROM information_schema.columns
+                        WHERE table_schema = 'sh_migration_test' AND table_name = 'sh_announcement_source'
+                        AND column_name IN ('raw_list_html', 'raw_detail_html', 'detail_fragment_html', 'body_html')
+                        """)) {
+                    htmlColumns.next();
+                    assertThat(htmlColumns.getInt(1)).isZero();
+                }
+                assertThatThrownBy(() -> statement.execute(
+                        "UPDATE sh_announcement_source SET attachments = '{}'"))
+                        .isInstanceOf(SQLException.class);
             }
             finally {
                 statement.execute("RESET search_path");

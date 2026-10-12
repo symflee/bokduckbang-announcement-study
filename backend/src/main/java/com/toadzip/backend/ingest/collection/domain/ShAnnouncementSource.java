@@ -44,11 +44,11 @@ public class ShAnnouncementSource {
     @Column(nullable = false, columnDefinition = "text")
     private String listUrl;
 
-    @Column(nullable = false, columnDefinition = "text")
-    private String rawListHtml;
+    @Column(columnDefinition = "text")
+    private String bodyText;
 
-    @Column(nullable = false, columnDefinition = "text")
-    private String rawDetailHtml;
+    @Column(columnDefinition = "text")
+    private String attachments;
 
     @Column(nullable = false)
     private Instant collectedAt;
@@ -70,8 +70,8 @@ public class ShAnnouncementSource {
         registeredDate = snapshot.registeredDate();
         originalUrl = snapshot.originalUrl();
         listUrl = snapshot.listUrl();
-        rawListHtml = snapshot.rawListHtml();
-        rawDetailHtml = snapshot.rawDetailHtml();
+        bodyText = snapshot.bodyText();
+        attachments = snapshot.attachments();
         collectedAt = now;
     }
 }

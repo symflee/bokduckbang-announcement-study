@@ -1,17 +1,16 @@
 package com.toadzip.backend.ingest.collection.service;
 
+import static com.toadzip.backend.ingest.collection.fixture.ShAnnouncementFixtures.detail;
+import static com.toadzip.backend.ingest.collection.fixture.ShAnnouncementFixtures.mainList;
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.when;
 
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
 import com.toadzip.backend.ingest.collection.repository.ShAnnouncementExternalRepository;
 import com.toadzip.backend.ingest.collection.repository.ShAnnouncementSourceRepository;
-import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
 import com.toadzip.backend.ingest.failure.domain.ExternalDataFailureStatus;
 import com.toadzip.backend.ingest.failure.repository.ExternalDataCollectionFailureRepository;
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import org.jsoup.Jsoup;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -43,34 +42,35 @@ class ShAnnouncementCollectionIntegrationTest {
     }
 
     @Test
-    void collectionCommitsRawOnlyAndBadResponsePreservesItUntilSuccessfulRetryResolvesFailure() throws IOException {
-        String detail = "<!doctype html><html><body><article>해석하지 않은 상세 원문</article></body></html>";
+    void collectionStoresContentAndParsingFailurePreservesItUntilSuccessfulRetry() {
+        String detail = detail();
         when(externalRepository.fetchList(1)).thenReturn(singlePostList());
-        when(externalRepository.fetchDetail("310653")).thenReturn(detail);
+        when(externalRepository.fetchDetail("100")).thenReturn(detail);
         long announcementCount = count("announcements");
         long housingCount = count("housing_complexes");
 
         assertThat(service.collect().storedRowCount()).isOne();
-        var first = sources.findBySourceKey("SH:m_247:310653").orElseThrow();
+        var first = sources.findBySourceKey("SH:100").orElseThrow();
         Long sourceId = first.getId();
-        assertThat(first.getRawDetailHtml()).isEqualTo(detail);
+        assertThat(first.getBodyText()).contains("입주자 모집 안내", "신청 안내").doesNotContain("<", "\t", "\r");
+        assertThat(first.getAttachments()).contains("fileSeq", "공고문");
 
-        when(externalRepository.fetchDetail("310653"))
-                .thenThrow(new ExternalDataRequestException("SH 요청 실패: HTTP 404"));
+        when(externalRepository.fetchDetail("100")).thenReturn("<html>변경된 구조</html>");
         assertThat(service.collect().failedRequestCount()).isOne();
-        var preserved = sources.findBySourceKey("SH:m_247:310653").orElseThrow();
-        assertThat(preserved.getRawDetailHtml()).isEqualTo(detail);
+        var preserved = sources.findBySourceKey("SH:100").orElseThrow();
+        assertThat(preserved.getBodyText()).isEqualTo(first.getBodyText());
+        assertThat(preserved.getAttachments()).isEqualTo(first.getAttachments());
         assertThat(preserved.getCollectedAt()).isEqualTo(first.getCollectedAt());
         assertThat(failures.findAllBySourceAndRequestDescriptionAndStatus(
-                ExternalDataSource.SH_ANNOUNCEMENT, "seq=310653", ExternalDataFailureStatus.PENDING)).hasSize(1);
+                ExternalDataSource.SH_ANNOUNCEMENT, "seq=100", ExternalDataFailureStatus.PENDING)).hasSize(1);
 
-        doReturn(detail).when(externalRepository).fetchDetail("310653");
+        doReturn(detail).when(externalRepository).fetchDetail("100");
         assertThat(service.collect().failedRequestCount()).isZero();
-        var refreshed = sources.findBySourceKey("SH:m_247:310653").orElseThrow();
+        var refreshed = sources.findBySourceKey("SH:100").orElseThrow();
         assertThat(refreshed.getId()).isEqualTo(sourceId);
-        assertThat(refreshed.getRawDetailHtml()).isEqualTo(detail);
+        assertThat(refreshed.getBodyText()).isEqualTo(first.getBodyText());
         assertThat(failures.findAllBySourceAndRequestDescriptionAndStatus(
-                ExternalDataSource.SH_ANNOUNCEMENT, "seq=310653", ExternalDataFailureStatus.RESOLVED)).hasSize(1);
+                ExternalDataSource.SH_ANNOUNCEMENT, "seq=100", ExternalDataFailureStatus.RESOLVED)).hasSize(1);
         assertThat(count("announcements")).isEqualTo(announcementCount);
         assertThat(count("housing_complexes")).isEqualTo(housingCount);
     }
@@ -79,16 +79,10 @@ class ShAnnouncementCollectionIntegrationTest {
         return jdbc.sql("SELECT count(*) FROM " + table).query(Long.class).single();
     }
 
-    private String singlePostList() throws IOException {
-        var document = Jsoup.parse(fixture("list.html"));
-        String row = document.select("#listTb > table > tbody > tr").get(5).outerHtml();
-        return "<input name='multi_itm_seq' value='2'><div class='topTxt'><p>총 <strong>1</strong> 건 [1/1페이지]"
-                + "</p></div><div id='listTb'><table><tbody>" + row + "</tbody></table></div>";
-    }
-
-    private String fixture(String name) throws IOException {
-        try (var input = getClass().getResourceAsStream("/ingest/sh/" + name)) {
-            return new String(input.readAllBytes(), StandardCharsets.UTF_8);
-        }
+    private String singlePostList() {
+        var document = Jsoup.parse(mainList());
+        document.select("#listTb tbody > tr").get(1).remove();
+        document.selectFirst("#mainform .mentcount strong").text("1");
+        return document.html();
     }
 }

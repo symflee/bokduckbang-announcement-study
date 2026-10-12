@@ -47,11 +47,11 @@ describe('DataPipelineControl', () => {
     render(<MemoryRouter><DataPipelineControl domain="announcement" compact /></MemoryRouter>)
     await act(async () => {})
     expect(screen.queryByText('아직 실행하지 않았습니다.')).not.toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'SH 공고 수집' }))
+    fireEvent.click(screen.getByRole('button', { name: 'SH 공고 수집·정제' }))
     expect(apiMocks.startDataPipeline).toHaveBeenCalledWith('SH_ANNOUNCEMENT_COLLECTION')
     const result = await screen.findByRole('article', { name: '현재 작업 단계' })
     expect(within(result).getByRole('list', { name: '실행 단계' }).children).toHaveLength(1)
-    await waitFor(() => expect(screen.getByRole('button', { name: 'SH 공고 수집' })).toBeEnabled())
+    await waitFor(() => expect(screen.getByRole('button', { name: 'SH 공고 수집·정제' })).toBeEnabled())
   })
 
   it('v2 간소화 화면은 지정한 단지 실행 버튼만 남기고 미실행 카드와 품질 패널을 숨긴다', async () => {
@@ -106,7 +106,7 @@ describe('DataPipelineControl', () => {
     expect(screen.getByRole('status')).toHaveTextContent('다른 탭')
     view.rerender(<MemoryRouter><DataPipelineControl domain="announcement" compact /></MemoryRouter>)
     const stopLabel = runningType === 'SH_ANNOUNCEMENT_COLLECTION'
-      ? 'SH 공고 수집 실행 중지' : '공고 수집·정제 실행 중지'
+      ? 'SH 공고 수집·정제 실행 중지' : '공고 수집·정제 실행 중지'
     expect(screen.getByRole('button', { name: stopLabel })).toBeVisible()
   })
   it('최초 상태 조회가 실패해도 재조회하여 기존 실행과 중지 버튼을 복원한다', async () => {
@@ -135,13 +135,13 @@ describe('DataPipelineControl', () => {
     }
   })
 
-  it('SH 공고 수집은 키 입력 없이 별도로 실행한다', async () => {
+  it('SH 공고 수집·정제는 키 입력 없이 별도로 실행한다', async () => {
     apiMocks.startDataPipeline.mockResolvedValue(execution('SH_ANNOUNCEMENT_COLLECTION', 'COMPLETED'))
     render(<MemoryRouter><DataPipelineControl /></MemoryRouter>)
-    fireEvent.click(screen.getByRole('button', { name: 'SH 공고 수집' }))
+    fireEvent.click(screen.getByRole('button', { name: 'SH 공고 수집·정제' }))
     expect(apiMocks.startDataPipeline).toHaveBeenCalledWith('SH_ANNOUNCEMENT_COLLECTION')
     expect(screen.queryByLabelText('공공데이터포털 API 키')).not.toBeInTheDocument()
-    await waitFor(() => expect(screen.getByRole('button', { name: 'SH 공고 수집' })).toBeEnabled())
+    await waitFor(() => expect(screen.getByRole('button', { name: 'SH 공고 수집·정제' })).toBeEnabled())
   })
 
   it.each([
