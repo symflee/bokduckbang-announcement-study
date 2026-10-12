@@ -280,6 +280,7 @@ describe('PublicHousingExplorer', () => {
       renderExplorer(repository, '/?source=shared#map')
       await waitFor(() => expect(getCurrentPosition).toHaveBeenCalledOnce())
       expect(screen.getByRole('button', { name: '현재 위치로 이동' })).toBeDisabled()
+      expect(screen.queryByText('내 주변 주택을 보여드리기 위해 현재 위치를 확인합니다.')).not.toBeInTheDocument()
       act(() => success(position))
       expect(screen.getByText('카메라 35.18,129.07')).toBeVisible()
       expect(screen.getByTestId('map-camera-zoom')).toHaveTextContent('14')

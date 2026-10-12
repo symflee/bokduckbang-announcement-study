@@ -8,9 +8,7 @@ export function CurrentLocationControl({ state, onLocate }: {
   readonly onLocate: () => void
 }) {
   const statusId = useId()
-  const message = state.kind === 'loading'
-    ? '내 주변 주택을 보여드리기 위해 현재 위치를 확인합니다.'
-    : state.kind === 'error' ? state.message : null
+  const message = state.kind === 'error' ? state.message : null
   return (
     <div className={styles.control}>
       <IconButton label="현재 위치로 이동" title="현재 위치로 이동" size="lg"
