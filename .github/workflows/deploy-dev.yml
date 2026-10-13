@@ -1,6 +1,9 @@
 name: Deploy Dev
 
 on:
+  # develop 브랜치에 푸시될 때 실행
+  push:
+    branches: [develop]
   workflow_dispatch:
 
 permissions:
@@ -11,8 +14,15 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  backend:
+    uses: ./.github/workflows/backend-ci.yml
+
+  frontend:
+    uses: ./.github/workflows/frontend-ci.yml
+
   deploy:
     name: Deploy to development server
+    needs: [backend, frontend]
     if: github.ref == 'refs/heads/develop'
     runs-on: [self-hosted, linux, toadzip-dev]
     timeout-minutes: 30
