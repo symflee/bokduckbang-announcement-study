@@ -1,6 +1,8 @@
 name: Deploy Prod
 
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -12,8 +14,15 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  backend:
+    uses: ./.github/workflows/backend-ci.yml
+
+  frontend:
+    uses: ./.github/workflows/frontend-ci.yml
+
   deploy:
     name: Deploy to production server
+    needs: [backend, frontend]
     if: github.ref == 'refs/heads/main'
     runs-on: [self-hosted, linux, toadzip-prod]
     timeout-minutes: 30
@@ -25,4 +34,5 @@ jobs:
         run: |
           git switch main
           git pull --ff-only origin main
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           docker compose up -d --build --wait --wait-timeout 180
