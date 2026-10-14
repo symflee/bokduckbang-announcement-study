@@ -27,6 +27,7 @@ export type ExplorerStudyEvent =
   | { type: 'detail'; requestId: string; id: string; status: string | null }
 export interface ExplorerStudy {
   tourStep?: number
+  tourCamera?: {latitude:number; longitude:number; zoom:number}
   mode: MapMode
   newModeAvailable: boolean
   announcements: Record<string, StudyAnnouncement[]>

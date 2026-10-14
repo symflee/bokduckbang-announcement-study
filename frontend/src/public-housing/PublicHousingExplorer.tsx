@@ -1,4 +1,5 @@
 import { StudyAnnouncementChoices } from '../experiment/StudyAnnouncementChoices'
+import { SERVICE_TOUR } from '../experiment/serviceTour'
 import type { ExplorerStudy, StudyDetailRequest } from '../experiment/explorerStudy'
 import { useListMeasurement } from './analytics/useListMeasurement'
 import { captureProductEvent } from '../analytics/productAnalytics'
@@ -210,7 +211,7 @@ export function PublicHousingExplorer({
   const mobile = useMobileViewport()
   const [mapCameraTarget, setMapCameraTarget] = useState<NaverMapCameraTarget>(
     () => {
-      if (study) return {latitude:37.5665, longitude:126.978, zoom:11}
+      if (study) return study.tourCamera ?? {latitude:37.5665, longitude:126.978, zoom:11}
       const initialMapLocation = parseMapLocation(
         new URLSearchParams(location.search),
       )
@@ -306,9 +307,10 @@ export function PublicHousingExplorer({
   useEffect(() => {
     if (tourStep === undefined) return
     setIntegratedSearchActive(false)
-    setListPanelMode(tourStep === 5 ? 'open' : 'collapsed')
-    setActiveResultTab(tourStep === 5 ? 'announcements' : 'complexes')
-    if (tourStep === 5) setAnnouncementListRequested(true)
+    const showList = SERVICE_TOUR[tourStep].view === 'list'
+    setListPanelMode(showList ? 'open' : 'collapsed')
+    setActiveResultTab(showList ? 'announcements' : 'complexes')
+    if (showList) setAnnouncementListRequested(true)
   }, [tourStep])
   const [listPanelMode, setListPanelMode] = useState<'auto' | 'open' | 'collapsed'>(() => (
     (initialDetail.kind === 'complex' || initialDetail.kind === 'announcement')
@@ -1647,7 +1649,7 @@ export function PublicHousingExplorer({
           )}
         </div>
         <ComplexDetailLayer
-          mobile={mobile}
+          mobile={mobile && tourStep === undefined}
           streetView={streetViewSupported && !mobile ? streetView : undefined}
           state={complexDetail}
           onClose={closeDetail}
@@ -1657,7 +1659,7 @@ export function PublicHousingExplorer({
           onRetry={() => { studyRef.current?.onEvent({type:'retry'}); captureProductEvent('exploration_retry_clicked', { surface: 'detail' }); setDetailRetryRevision((current) => current + 1) }}
         />
         <AnnouncementDetailLayer
-          mobile={mobile}
+          mobile={mobile && tourStep === undefined}
           state={announcementDetail}
           onClose={closeDetail}
           backTarget={detailReturnFocusStack.at(-1)}

@@ -1,7 +1,7 @@
 import { useLayoutEffect, useRef, useState } from 'react'
 import { Button } from '../design-system/components/Button'
 
-export interface StudyTip { target: string; title: string; text: string }
+export interface StudyTip { target: string; title: string; text: string; pinLegend?: boolean }
 
 interface Props {
   tip: StudyTip
@@ -35,7 +35,7 @@ export function StudySpotlight({tip,index,total,label,nextLabel,onPrevious,onNex
     const resize = new ResizeObserver(() => schedule())
     function release() {
       if (!selected) return
-      selected.removeEventListener('click',activate)
+      selected.removeEventListener('click',activate,true)
       selected.classList.remove('study-spotlit')
       if (originalDescription === null) selected.removeAttribute('aria-describedby')
       else selected.setAttribute('aria-describedby',originalDescription)
@@ -53,7 +53,7 @@ export function StudySpotlight({tip,index,total,label,nextLabel,onPrevious,onNex
         if (selected) {
           originalDescription=selected.getAttribute('aria-describedby')
           selected.classList.add('study-spotlit')
-          selected.addEventListener('click',activate)
+          selected.addEventListener('click',activate,true)
           selected.setAttribute('aria-describedby',[originalDescription,'study-tip-description'].filter(Boolean).join(' '))
           if (selected.matches('button,input,[tabindex]')) {
             selected.scrollIntoView({block:'nearest',inline:'nearest'})
@@ -102,6 +102,7 @@ export function StudySpotlight({tip,index,total,label,nextLabel,onPrevious,onNex
       style={placement ? {left:placement.left,top:placement.top,width:placement.width,maxHeight:placement.maxHeight} : undefined}>
       <div className="study-tip-heading"><span className="study-eyebrow">{label} · {index+1} / {total}</span>{onClose && <button onClick={onClose} aria-label={closeLabel}>×</button>}</div>
       <h2>{tip.title}</h2><p id="study-tip-description">{tip.text}</p>
+      {tip.pinLegend && <ul className="study-pin-legend" aria-label="단지 핀 색상"><li data-status="upcoming">공고중</li><li data-status="applying">접수중</li><li data-status="none">진행 중 공고 없음</li><li data-status="selected">선택한 단지</li></ul>}
       <div className="study-tip-actions">{total > 1 && <button disabled={index===0} onClick={onPrevious}>이전</button>}<Button onClick={onNext}>{nextLabel}</Button></div>
     </section>
   </>

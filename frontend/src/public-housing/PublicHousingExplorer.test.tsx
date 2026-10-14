@@ -1,3 +1,4 @@
+import { SERVICE_TOUR } from '../experiment/serviceTour'
 import {
   act,
   fireEvent,
@@ -182,11 +183,28 @@ it('실험 지도 모드를 바꾸면 지도 이동 없이 공고 단지 집계�
   expect(complexes.findMap).toHaveBeenCalledTimes(2)
 })
 
+it.each([true,false])('모바일 상세의 모달 동작을 소개 중에만 해제한다: %s',async touring=>{
+  vi.stubGlobal('matchMedia',(query:string)=>({matches:query==='(max-width: 767px)' || query==='(max-width: 1023px)'}))
+  const repository=createRepository()
+  try {
+  render(<MemoryRouter initialEntries={['/?complexId=17']}><PublicHousingExplorer showWelcome={false} repository={repository} mapRepository={repository}
+    study={{mode:'complexes',onModeChange:()=>{},newModeAvailable:false,announcements:{},tourStep:touring?SERVICE_TOUR.findIndex(tip=>tip.view==='complex'):undefined,onEvent:()=>{}}}/></MemoryRouter>)
+  expect(await screen.findByRole('dialog',{name:'단지 상세'})).toHaveAttribute('aria-modal',String(!touring))
+  } finally { vi.unstubAllGlobals() }
+})
+
+it('서비스 소개는 지정한 핀 위치로 시작한다',()=>{
+  const repository=createRepository()
+  render(<MemoryRouter><PublicHousingExplorer showWelcome={false} repository={repository} mapRepository={repository}
+    study={{mode:'complexes',onModeChange:()=>{},newModeAvailable:false,announcements:{},tourStep:4,tourCamera:{latitude:37.581326,longitude:126.994176,zoom:13},onEvent:()=>{}}}/></MemoryRouter>)
+  expect(screen.getByText('카메라 37.581326,126.994176')).toBeVisible()
+})
+
 it('서비스 소개에서 공고 목록을 실제로 열고 다음 소개로 가면 닫는다', async () => {
   const repository=createRepository()
   function Experience() {
-    const [tourStep,setTourStep]=useState(4)
-    return <><button onClick={()=>setTourStep(5)}>목록 시연 시작</button><button onClick={()=>setTourStep(6)}>다음 소개</button>
+    const [tourStep,setTourStep]=useState(SERVICE_TOUR.findIndex(tip=>tip.target==='#announcement-list-trigger'))
+    return <><button onClick={()=>setTourStep(SERVICE_TOUR.findIndex(tip=>tip.view==='list'))}>목록 시연 시작</button><button onClick={()=>setTourStep(SERVICE_TOUR.findIndex(tip=>tip.target==='#recent-list-trigger'))}>다음 소개</button>
       <PublicHousingExplorer showWelcome={false} repository={repository} mapRepository={repository}
         study={{mode:'complexes',onModeChange:()=>{},newModeAvailable:false,announcements:{},tourStep,onEvent:()=>{}}} /></>
   }

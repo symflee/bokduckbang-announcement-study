@@ -21,7 +21,7 @@ vi.mock('../public-housing/PublicHousingExplorer',()=>({PublicHousingExplorer:({
     onEvent({type:'detail',requestId,id:'1',status:'APPLYING'})
   }
   return <div data-testid="explorer"><output aria-label="지도 조건">{location.search}</output>
-    {study.tourStep===5 && <section id="housing-list-page" aria-label="공고 목록 시연">실제 공고 목록</section>}
+    {study.tourStep!==undefined && SERVICE_TOUR[study.tourStep].view==='list' && <section id="housing-list-page" aria-label="공고 목록 시연">실제 공고 목록</section>}
     <button onClick={()=>onEvent({type:'context',context:{...EMPTY_HINT_CONTEXT,detail:'complex-empty'}})}>공고 없는 단지 열기</button>
     <button onClick={()=>onEvent({type:'context',context:{...EMPTY_HINT_CONTEXT,statusFiltered:true,mapView:'individual',detail:'complex-active',complexFromFilteredPin:true}})}>공고 있는 단지 열기</button><button id="study-complex-tab">단지지도</button>
     <div className="housing-search-overlay"><input type="search" aria-label="지역 검색" /></div>
@@ -58,10 +58,14 @@ describe('three-stage guided comparison',()=>{
     for(const [index,tip] of SERVICE_TOUR.entries()) {
       expect(screen.getByRole('heading',{name:tip.title})).toBeInTheDocument()
       if(index===2 || index===3) {
-        expect(screen.getByRole('status',{name:'지도 조건'})).not.toHaveTextContent('complexApplicationStatuses')
+        expect(screen.getByRole('status',{name:'지도 조건',hidden:true})).not.toHaveTextContent('complexApplicationStatuses')
         expect(screen.getByRole('button',{name:index===2?'모집상태':'공급기관'})).toHaveClass('study-spotlit')
       }
-      if(index===5) expect(screen.getByRole('region',{name:'공고 목록 시연'})).toBeInTheDocument()
+      if(tip.view==='list') expect(screen.getByRole('region',{name:'공고 목록 시연'})).toBeInTheDocument()
+      const route=screen.getByRole('status',{name:'지도 조건'}).textContent
+      if(tip.view==='complex' || tip.view==='complex-announcement') expect(route).toContain('complexId=10001')
+      if(tip.view==='announcement' || tip.view==='list-announcement') expect(route).toContain('announcementId=20001')
+      if(tip.pinLegend) expect(screen.getByRole('list',{name:'단지 핀 색상'})).toHaveTextContent('공고중접수중진행 중 공고 없음선택한 단지')
       click(tip.nextLabel)
     }
     expect(screen.getByRole('heading',{name:'버튼들을 하나씩 눌러 보세요.'})).toBeInTheDocument()
@@ -83,10 +87,10 @@ describe('three-stage guided comparison',()=>{
     act(()=>vi.advanceTimersByTime(20_000));click('4 쉬웠다');intro(METHOD_NAMES[second])
     click('두 번째 방법 시작하기');click(second==='old'?'모집상태':'공고지도')
     act(()=>vi.advanceTimersByTime(3000));click(second==='old'?'필터 단지의 공고 열기':'공고 핀 열기');click('5 매우 쉬웠다')
-    intro(/두 가지 방법/);click('두 방법 비교하기')
-    expect(screen.getByRole('status',{name:'지도 조건'})).not.toHaveTextContent('announcementId')
-    expect(screen.getByRole('status',{name:'지도 조건'})).toHaveTextContent('mapZoom=13')
-    click('설문 작성하기')
+    expect(screen.getByRole('dialog',{name:'체험 설문'})).toBeInTheDocument()
+    expect(screen.queryByRole('button',{name:'설문 작성하기'})).not.toBeInTheDocument()
+    expect(screen.getByRole('status',{name:'지도 조건',hidden:true})).not.toHaveTextContent('announcementId')
+    expect(screen.getByRole('status',{name:'지도 조건',hidden:true})).toHaveTextContent('mapZoom=13')
     const summary=JSON.parse(screen.getByRole('status',{name:'체험 기록'}).textContent!) as ExperimentSummary
     expect(summary.order).toEqual(order)
     expect(summary[first]).toMatchObject({outcome:'success',elapsedMs:4000,helpAtMs:null,ease:4})
@@ -134,10 +138,18 @@ describe('three-stage guided comparison',()=>{
     expect(readState(dataset.datasetVersion)?.trials.old).toMatchObject({outcome:'success',elapsedMs:17125,helpAtMs:15125})
   })
   it('restores the service tour outside the three trial stages',async()=>{
-    saveState({...initialState(dataset.datasetVersion,'tour'),step:'warmup',tourStep:5})
-    await mount();screen.getByRole('heading',{name:'이렇게 공고 목록이 열려요'})
+    saveState({...initialState(dataset.datasetVersion,'tour'),step:'warmup',tourStep:SERVICE_TOUR.findIndex(tip=>tip.view==='list')})
+    await mount();screen.getByRole('heading',{name:'목록에서 공고를 골라요'})
     expect(screen.getByRole('region',{name:'공고 목록 시연'})).toHaveClass('study-spotlit')
     expect(readState(dataset.datasetVersion)?.trials.old.interrupted).toBe(false)
+  })
+  it.each(['complex','announcement','list-announcement'] as const)('restores the actual %s preview without counting a trial',async view=>{
+    saveState({...initialState(dataset.datasetVersion,'tour-detail'),step:'warmup',tourStep:SERVICE_TOUR.findIndex(tip=>tip.view===view)})
+    await mount()
+    expect(screen.getByRole('status',{name:'지도 조건'})).toHaveTextContent(view==='complex'?'complexId=10001':'announcementId=20001')
+    expect(readState(dataset.datasetVersion)?.trials.old.elapsedMs).toBe(0)
+    click('이전')
+    expect(readState(dataset.datasetVersion)?.tourStep).toBe(SERVICE_TOUR.findIndex(tip=>tip.view===view)-1)
   })
   it('offers only a relevant hint and dismisses it when the map situation changes',async()=>{
     saveState(studyReducer(initialState(dataset.datasetVersion,'context',false,['old','new']),{type:'step',step:'old-task'}))

@@ -20,6 +20,15 @@ describe('소개 강조 위치',()=>{
     expect(frame().style.left).toBe('60px')
     expect(frame().style.width).toBe('400px')
   })
+  it('지도 핀이 클릭 전파를 막아도 시연 선택을 전달한다',()=>{
+    vi.spyOn(HTMLElement.prototype,'getBoundingClientRect').mockReturnValue(new DOMRect(60,200,92,54))
+    const onTargetActivate=vi.fn()
+    const {container}=render(<><div id="tour-pin"/><StudySpotlight tip={{target:'#tour-pin',title:'핀 소개',text:'핀을 누르면 상세가 열립니다'}} index={0} total={1} label="소개" nextLabel="다음" onPrevious={()=>{}} onNext={()=>{}} onTargetActivate={onTargetActivate} /></>)
+    const pin=container.querySelector('#tour-pin')!
+    pin.addEventListener('click',event=>event.stopImmediatePropagation())
+    fireEvent.click(pin)
+    expect(onTargetActivate).toHaveBeenCalledOnce()
+  })
   it('화면 밖으로 나간 부분은 강조 영역에서 제외한다',()=>{
     vi.spyOn(HTMLElement.prototype,'getBoundingClientRect').mockReturnValue(new DOMRect(60,600,400,500))
     const {container}=render(<><aside id="tour-panel"/><StudySpotlight tip={{target:'#tour-panel',title:'목록 소개',text:'공고 목록입니다'}} index={0} total={1} label="소개" nextLabel="다음" onPrevious={()=>{}} onNext={()=>{}} /></>)

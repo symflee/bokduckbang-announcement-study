@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest'
 import { analyze, parseCsv, questions } from './analyze.mjs'
-const row={session_id:'a',is_test:'false',experiment_version:'announcement-map-v6',question_version:'survey-v2',dataset_version:'national-500-v2',method_order:'old,new',old_outcome:'success',new_outcome:'success',old_completion_source:'filtered_complex',new_completion_source:'announcement_pin',ease_old:'3',ease_new:'5',old_help:'false',new_help:'true',old_elapsed_ms:'10000',new_elapsed_ms:'20000',old_interrupted:'false',new_interrupted:'false',old_errors:'0',new_errors:'0',old_retries:'0',new_retries:'0',[questions.preference]:'공고지도로 찾기',[questions.need]:'4'}
+const row={session_id:'a',is_test:'false',experiment_version:'announcement-map-v7',question_version:'survey-v2',dataset_version:'national-500-v2',method_order:'old,new',old_outcome:'success',new_outcome:'success',old_completion_source:'filtered_complex',new_completion_source:'announcement_pin',ease_old:'3',ease_new:'5',old_help:'false',new_help:'true',old_elapsed_ms:'10000',new_elapsed_ms:'20000',old_interrupted:'false',new_interrupted:'false',old_errors:'0',new_errors:'0',old_retries:'0',new_retries:'0',[questions.preference]:'공고지도로 찾기',[questions.need]:'4'}
 it('excludes test, duplicate, incomplete and previous versions; preserves zero timing',()=>{
   const result=analyze([row,row,{...row,session_id:'test',is_test:'true'},{...row,session_id:'bad',experiment_version:'announcement-map-v3'},{...row,session_id:'b',old_elapsed_ms:'0',new_interrupted:'true'}])
   expect(result.validResponses).toBe(2)
