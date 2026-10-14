@@ -1016,10 +1016,11 @@ export function PublicHousingExplorer({
     setCameraRequestId((current) => current + 1)
   }, [complexDetail, detailCameraRevision, selectedSearchComplex])
 
-  const previousMapFiltersKeyRef = useRef(complexFiltersKey)
+  const mapFiltersKey = `${study?.mode ?? ''}|${complexFiltersKey}`
+  const previousMapFiltersKeyRef = useRef(mapFiltersKey)
   useEffect(() => {
-    if (previousMapFiltersKeyRef.current === complexFiltersKey) return
-    previousMapFiltersKeyRef.current = complexFiltersKey
+    if (previousMapFiltersKeyRef.current === mapFiltersKey) return
+    previousMapFiltersKeyRef.current = mapFiltersKey
     if (viewportTimerRef.current !== null) {
       window.clearTimeout(viewportTimerRef.current)
       viewportTimerRef.current = null
@@ -1027,7 +1028,7 @@ export function PublicHousingExplorer({
     if (viewport !== null && !(clusterTransitionRef.current && transitionWaitingForIdleRef.current)) {
       requestServerMap(viewport, complexFilters)
     }
-  }, [complexFiltersKey, complexFilters, viewport, requestServerMap])
+  }, [mapFiltersKey, complexFilters, viewport, requestServerMap])
 
   const finishClusterTransition = useCallback(() => {
     clusterTransitionRef.current = false
@@ -1360,7 +1361,7 @@ export function PublicHousingExplorer({
       <nav className="housing-navigation" aria-label="주요 메뉴">
         <div className="housing-results__tabs">
           {study && <>
-            <button type="button" className={study.mode === 'complexes' ? 'is-active' : ''} aria-pressed={study.mode === 'complexes'} onClick={() => { collapseResults(); study.onModeChange('complexes') }}><span className="study-nav-icon" aria-hidden="true">▦</span><span>단지지도</span></button>
+            <button id="study-complex-tab" type="button" className={study.mode === 'complexes' ? 'is-active' : ''} aria-pressed={study.mode === 'complexes'} onClick={() => { collapseResults(); study.onModeChange('complexes') }}><span className="study-nav-icon" aria-hidden="true">▦</span><span>단지지도</span></button>
             {study.newModeAvailable && <button id="study-announcement-tab" type="button" className={study.mode === 'announcements' ? 'is-active' : ''} aria-pressed={study.mode === 'announcements'} onClick={() => { collapseResults(); study.onEvent({type:'path', path:'announcement_map'}); study.onModeChange('announcements') }}><span className="study-nav-icon" aria-hidden="true">▤</span><span>공고지도</span></button>}
           </>}
 

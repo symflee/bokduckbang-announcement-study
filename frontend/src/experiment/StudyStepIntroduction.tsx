@@ -3,32 +3,22 @@ import { Button } from '../design-system/components/Button'
 import type { IntroducedStep } from './state'
 
 const TASK = '공고가 올라온 단지를 찾고, 공고 내용을 확인해 주세요.'
-const STAGES = ['지도 둘러보기', '첫 번째 방법', '두 번째 방법', '비교와 설문']
+const STAGES = ['서비스 소개', '첫 번째 방법', '두 번째 방법', '비교와 설문']
 const INTRODUCTIONS = {
   warmup: {
-    stage: 0, badge: '준비 · 지도 둘러보기', title: '먼저, 지도를\n둘러볼게요.',
-    description: '여기는 공공주택 단지를 찾아보는 지도예요. 지도를 움직이거나 확대하고, 단지를 하나 눌러 보세요.',
-    action: '지도 둘러보기 시작',
+    stage: 0, badge: '준비 · 서비스 소개', title: '먼저, 서비스를\n짧게 소개할게요.',
+    description: '복덕방은 공공주택의 위치와 모집공고를 함께 찾아보는 서비스예요. 주요 버튼을 짧게 안내한 뒤, 두 가지 방법의 체험을 시작합니다.',
+    action: '서비스 소개 시작',
   },
   'old-task': {
     stage: 1, badge: '방법 1 / 2', title: '첫 번째 방법을\n시작합니다.',
     description: '지금 보이는 지도에서 편한 방법으로 공고를 찾아보세요. 필요하면 언제든 도움을 받을 수 있어요.',
     action: '첫 번째 방법 시작하기',
   },
-  'old-guide': {
-    stage: 1, badge: '방법 1 / 2 · 사용 안내', title: '첫 번째 방법을\n함께 살펴볼게요.',
-    description: '방금 체험한 방법의 사용 순서를 짧게 확인합니다. 세 단계의 안내를 따라 지도에서 직접 확인해 보세요.',
-    action: '첫 번째 방법 안내 보기',
-  },
   'new-task': {
     stage: 2, badge: '방법 2 / 2', title: '두 번째 방법을\n시작합니다.',
     description: '같은 지도 범위에서 같은 과제를 한 번 더 해볼게요. 필요하면 언제든 도움을 받을 수 있어요.',
     action: '두 번째 방법 시작하기',
-  },
-  'new-guide': {
-    stage: 2, badge: '방법 2 / 2 · 사용 안내', title: '두 번째 방법을\n함께 살펴볼게요.',
-    description: '방금 체험한 방법의 사용 순서를 짧게 확인합니다. 세 단계의 안내를 따라 지도에서 직접 확인해 보세요.',
-    action: '두 번째 방법 안내 보기',
   },
   compare: {
     stage: 3, badge: '마지막 단계 · 비교와 설문', title: '두 가지 방법,\n어떻게 달랐나요?',

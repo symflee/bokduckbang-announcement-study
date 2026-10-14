@@ -1,9 +1,9 @@
 import type { StudyPath } from './explorerStudy'
 
-export const EXPERIMENT_VERSION = 'announcement-map-v2'
+export const EXPERIMENT_VERSION = 'announcement-map-v3'
 export const QUESTION_VERSION = 'survey-v1'
-export type StudyStep = 'intro' | 'warmup' | 'old-task' | 'old-guide' | 'new-task' | 'new-guide' | 'compare' | 'survey' | 'complete'
-const INTRODUCED_STEPS = ['warmup', 'old-task', 'old-guide', 'new-task', 'new-guide', 'compare'] as const
+export type StudyStep = 'intro' | 'warmup' | 'old-task' | 'new-task' | 'compare' | 'survey' | 'complete'
+const INTRODUCED_STEPS = ['warmup', 'old-task', 'new-task', 'compare'] as const
 export type IntroducedStep = typeof INTRODUCED_STEPS[number]
 export function hasStepIntroduction(step: StudyStep): step is IntroducedStep {
   return INTRODUCED_STEPS.some(value => value === step)
@@ -13,7 +13,7 @@ export interface TrialResult {
   outcome: 'active' | 'success' | 'skipped'
   elapsedMs: number
   helpAtMs: number | null
-  helpReason: 'requested' | 'timeout' | 'give_up' | null
+  helpReason: 'requested' | 'timeout' | null
   paths: StudyPath[]
   announcementId: string | null
   requestedAnnouncementId: string | null
@@ -27,6 +27,7 @@ export interface ExperimentState {
   sessionId: string
   step: StudyStep
   stageStarted: boolean
+  tourStep: number
   trials: {old: TrialResult; new: TrialResult}
   test: boolean
   responseId: string | null
@@ -46,7 +47,7 @@ export function emptyTrial(): TrialResult {
   return {outcome:'active', elapsedMs:0, helpAtMs:null, helpReason:null, paths:[], announcementId:null, requestedAnnouncementId:null, interrupted:false, errors:0, retries:0}
 }
 export function initialState(datasetVersion: string, sessionId: string, test = false): ExperimentState {
-  return {version:EXPERIMENT_VERSION, datasetVersion, sessionId, step:'intro', stageStarted:true, trials:{old:emptyTrial(), new:emptyTrial()}, test, responseId:null}
+  return {version:EXPERIMENT_VERSION, datasetVersion, sessionId, step:'intro', stageStarted:true, tourStep:0, trials:{old:emptyTrial(), new:emptyTrial()}, test, responseId:null}
 }
 export function activeTrial(state: ExperimentState): TrialKey | null {
   if (!state.stageStarted) return null
@@ -55,6 +56,7 @@ export function activeTrial(state: ExperimentState): TrialKey | null {
 export type StudyAction =
   | {type:'step'; step:StudyStep}
   | {type:'begin-step'}
+  | {type:'tour-step'; index:number}
   | {type:'tick'; milliseconds:number}
   | {type:'help'; reason: NonNullable<TrialResult['helpReason']>}
   | {type:'path'; path:StudyPath}
@@ -64,6 +66,7 @@ export type StudyAction =
   | {type:'submitted'; responseId:string}
 export function studyReducer(state:ExperimentState, action:StudyAction): ExperimentState {
   if (action.type === 'step') return {...state, step:action.step, stageStarted:!hasStepIntroduction(action.step)}
+  if (action.type === 'tour-step') return state.step === 'warmup' ? {...state, tourStep:Math.max(0,Math.min(5,action.index))} : state
   if (action.type === 'begin-step') return state.stageStarted ? state : {...state, stageStarted:true}
   if (action.type === 'submitted') return state.step === 'survey' ? {...state, step:'complete', responseId:action.responseId} : state
   const key = activeTrial(state)
@@ -100,7 +103,7 @@ function validTrial(value:unknown): value is TrialResult {
   if (!value || typeof value !== 'object') return false
   const v = value as Record<string,unknown>
   return ['active','success','skipped'].includes(String(v.outcome)) && typeof v.elapsedMs === 'number' && Number.isFinite(v.elapsedMs) && v.elapsedMs >= 0
-    && (v.helpAtMs === null || typeof v.helpAtMs === 'number') && [null,'requested','timeout','give_up'].includes(v.helpReason as never)
+    && (v.helpAtMs === null || typeof v.helpAtMs === 'number') && [null,'requested','timeout'].includes(v.helpReason as never)
     && Array.isArray(v.paths) && v.paths.every(p => ['filter','announcement_map','search','announcement_list','complex','recent'].includes(p))
     && (v.requestedAnnouncementId === null || typeof v.requestedAnnouncementId === 'string')
     && (v.announcementId === null || typeof v.announcementId === 'string') && typeof v.interrupted === 'boolean'
@@ -112,7 +115,8 @@ export function restoreState(source:string | null, datasetVersion:string): Exper
     if (!state || typeof state !== 'object') return null
     const v = state as Partial<ExperimentState>
     if (v.version !== EXPERIMENT_VERSION || v.datasetVersion !== datasetVersion || typeof v.sessionId !== 'string'
-      || !['intro','warmup','old-task','old-guide','new-task','new-guide','compare','survey','complete'].includes(v.step ?? '')
+      || !['intro','warmup','old-task','new-task','compare','survey','complete'].includes(v.step ?? '')
+      || !Number.isInteger(v.tourStep) || (v.tourStep ?? -1) < 0 || (v.tourStep ?? 6) > 5
       || typeof v.stageStarted !== 'boolean' || typeof v.test !== 'boolean' || !v.trials || !validTrial(v.trials.old) || !validTrial(v.trials.new)
       || (v.responseId !== null && typeof v.responseId !== 'string')) return null
     const restored = v as ExperimentState

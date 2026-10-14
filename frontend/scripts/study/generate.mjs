@@ -17,6 +17,13 @@ const groups = [
   { key: 'yeongnam', count: 60, ads: 4, codes: ['26350','27290','31140','47110','48120','48170'] },
   { key: 'jeju', count: 10, ads: 1, codes: ['50110','50130'] },
 ]
+// Most districts have no ongoing offer. Only three districts have 3–5 sites.
+const openSiteCounts = {
+  '11110':1, '11140':1, '11200':2, '11380':1, '11440':3, '11500':1, '11620':1, '11680':5,
+  '41110':2, '41280':1, '28185':1, '51110':2, '43110':2, '30200':1,
+  '52110':2, '12150':1, '26350':4, '27290':1, '48170':1, '50110':1,
+}
+const closedIndices = [9,14,20,27]
 const base = structuredClone(MINIMAL_PUBLIC_HOUSING_SNAPSHOT)
 const snapshot = { version: 1, complexRegionCodes: {}, announcementRegionCodes: {}, regionCodeDescendants: {}, complexListItems: [], mapComplexItems: [], complexDetails: [], announcementListItems: [], announcementDetails: [] }
 const locations = {}
@@ -46,7 +53,7 @@ for (const group of groups) {
       const lat=p.latitude+Math.sin(angle)*radius, lng=p.longitude+Math.cos(angle)*radius
       if(inside(lng,lat,feature.geometry)) { latitude=+lat.toFixed(6); longitude=+lng.toFixed(6); break }
     }
-    const k=i%kinds.length, agency=group.key==='seoul'?agencies.SH:code.startsWith('41')?agencies.GH:agencies.LH
+    const k=(group.codes.indexOf(code)+Math.floor(index/5))%kinds.length, agency=group.key==='seoul'?agencies.SH:code.startsWith('41')?agencies.GH:agencies.LH
     const name=`${region.districtName ?? region.provinceName} 누리${index+1} ${names[k]} (예시)`
     const amount=18000000+(i%12)*6500000, rent=120000+(i%10)*35000, area=26+(i%5)*7
     const map={...base.mapComplexItems[0],complexId:id,name,latitude,longitude,rentalType:kinds[k],agency,exclusiveAreaMin:area,exclusiveAreaMax:area+10,depositMin:amount,depositMax:amount+15000000,monthlyRentMin:rent,monthlyRentMax:rent+80000,applicationStatus:null}
@@ -61,16 +68,31 @@ for (const group of groups) {
     locations[id]={regionCode:code,neighborhoodCode:town.regionCode,provinceCode:province,regionName:region.displayName,neighborhoodName:town.displayName,group:group.key}
     members.push(detail)
   }
+  const openSites=group.codes.flatMap(code=>members.filter(c=>locations[c.complexId].regionCode===code).slice(0,openSiteCounts[code]??0))
+  const buckets=new Map()
+  for(const c of openSites) {
+    const key=c.agency.code+':'+c.rentalType
+    buckets.set(key,[...(buckets.get(key)??[]),c])
+  }
+  const activeCount=Array.from({length:group.ads},(_,a)=>adIndex+a).filter(n=>!closedIndices.includes(n)).length
+  const selections=[...buckets.values()]
+  // A second offer at the same site demonstrates the chooser without adding pins.
+  if(selections.length<activeCount) selections.push([selections[0][0]])
+  while(selections.length<activeCount) {
+    const largest=selections.reduce((a,b)=>a.length>b.length?a:b)
+    selections.push(largest.length>1 ? [largest.pop()] : [largest[0]])
+  }
+  if(selections.length!==activeCount) throw new Error('Too many agency/type groups')
+  let activeIndex=0
   for(let a=0;a<group.ads;a++) {
     const n=adIndex++, id=20001+n
-    const closed=[9,14,20,27].includes(n), before=!closed&&[0,2,4,6,10,12,15,17,22,25].includes(n)
+    const closed=closedIndices.includes(n), before=!closed&&[0,2,4,6,10,12,15,17,22,25].includes(n)
     const status=closed?'CLOSED':before?'BEFORE_APPLICATION':'APPLYING'
     const start=closed?-20:before?5+n%7:-3, end=closed?-10:before?10+n%7:4+n%11
-    // Overlap creates multiple offers at one site; every district gets active examples.
-    let selected=members.filter((_,i)=>(i%group.ads===a || i%group.ads===(a+1)%group.ads) && Math.floor(i/group.codes.length)%5!==4)
-    if(group.key==='capital') selected=selected.filter(c=>c.agency.code===(a<3?'GH':'LH'))
+    const inactive=members.filter(c=>!openSites.includes(c))
+    const firstClosed=inactive[0]
+    const selected=closed ? inactive.filter(c=>c.agency.code===firstClosed.agency.code&&c.rentalType===firstClosed.rentalType).slice(0,2) : selections[activeIndex++]
     const rentalType=selected[0].rentalType
-    selected=selected.filter(c=>c.rentalType===rentalType)
     const target=rentalType==='HAPPY_HOUSING'?'청년':'일반'
     const first=selected[0], title=`${group.key==='seoul'?'서울':first.address.regionName} ${names[kinds.indexOf(rentalType)]} ${a%2?'예비입주자':'입주자'} 모집 (예시 ${a+1})`
     const item={...base.announcementListItems[0],announcementId:id,title,agency:first.agency,rentalType,recruitmentType:a%2?'WAITLIST':'NEW',applicationStatus:status,publishedAt:date(-12),applicationStartAt:date(start),applicationEndAt:date(end),dDay:before?start:end,regionNames:[...new Set(selected.map(c=>c.address.regionName))],supplyComplexCount:selected.length,supplyHouseholdCount:selected.length*12,viewCount:0,actualCompetitionRate:null,predictedCompetitionRate:null}
@@ -85,9 +107,12 @@ for(const detail of snapshot.complexDetails) {
   const current=detail.currentAnnouncements.sort((a,b)=>(a.applicationStatus==='APPLYING'?-1:1)-(b.applicationStatus==='APPLYING'?-1:1)||a.announcementId-b.announcementId)
   const list=snapshot.complexListItems.find(c=>c.complexId===detail.complexId)
   const map=snapshot.mapComplexItems.find(c=>c.complexId===detail.complexId)
-  if(current[0]) { list.representativeAnnouncement=current[0]; map.applicationStatus=current[0].applicationStatus }
+  if(current[0]) { list.representativeAnnouncement=current[0]; map.applicationStatus=current[0].applicationStatus; list.applicationStatus=current[0].applicationStatus }
 }
-const output={schemaVersion:1,datasetVersion:'national-500-v1',asOf,notice:'기능 비교용 가상 단지·예시 모집 정보입니다. 실제 위치·모집 사실을 나타내지 않습니다.',source:'지역 경계·대표점: 저장소 지역 자료. 화면과 조건 구성 참고: https://bokduckbang.com/explore',locations,snapshot}
+const output={schemaVersion:1,datasetVersion:'national-500-v2',asOf,notice:'기능 비교용 가상 단지·예시 모집 정보입니다. 실제 위치·모집 사실을 나타내지 않습니다.',source:'지역 경계·대표점: 저장소 지역 자료. 화면과 조건 구성 참고: https://bokduckbang.com/explore',locations,snapshot}
 if(snapshot.complexDetails.length!==500||snapshot.announcementDetails.length!==30) throw new Error('Incorrect counts')
-writeFileSync(root+'public/study/national-500-v1.json',JSON.stringify(output)+'\n')
-console.log('Generated 500 complexes / 30 announcements; no live backend is used at runtime.')
+writeFileSync(root+'public/study/national-500-v2.json',JSON.stringify(output)+'\n')
+const counts=groups.flatMap(g=>g.codes).map(code=>snapshot.complexDetails.filter(c=>locations[c.complexId].regionCode===code&&c.currentAnnouncements.length>0).length)
+const distribution=Object.fromEntries([0,1,2,3,4,5].map(n=>[n,counts.filter(c=>c===n).length]))
+if(counts.some(n=>n>5)||distribution[0]<=counts.length/2||counts.filter(n=>n>=3).length!==3) throw new Error('Ongoing sites must remain sparse')
+console.log(JSON.stringify({complexes:500,announcements:30,ongoingSites:counts.reduce((a,b)=>a+b,0),districtDistribution:distribution}))

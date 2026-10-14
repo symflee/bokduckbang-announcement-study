@@ -37,7 +37,7 @@ export function decodeStudyDataset(value: unknown): StudyDataset {
   return {schemaVersion: 1, datasetVersion: value.datasetVersion, asOf: value.asOf, notice: value.notice, locations, snapshot}
 }
 export async function loadStudyDataset(signal?: AbortSignal) {
-  const response = await fetch('/study/national-500-v1.json', {signal})
+  const response = await fetch('/study/national-500-v2.json', {signal})
   if (!response.ok) throw new Error('시연 데이터를 불러오지 못했습니다.')
   return decodeStudyDataset(await response.json())
 }

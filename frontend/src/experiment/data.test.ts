@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { announcementsByComplex, createStudyRepositories, decodeStudyDataset } from './data'
 
-const data = decodeStudyDataset(JSON.parse(readFileSync('public/study/national-500-v1.json','utf8')))
+const data = decodeStudyDataset(JSON.parse(readFileSync('public/study/national-500-v2.json','utf8')))
 const bounds = {southWestLat:32,southWestLng:124,northEastLat:39,northEastLng:132}
 const signal = new AbortController().signal
 
@@ -25,6 +25,20 @@ describe('national study dataset',()=>{
     expect(new Set(Object.keys(linked).map(id=>data.locations[id].group)).size).toBe(7)
     const ids = new Set(data.snapshot.mapComplexItems.map(c=>String(c.complexId)))
     for (const id of Object.keys(linked)) expect(ids.has(id)).toBe(true)
+  })
+  it('keeps most districts empty, caps ongoing sites at five, and shows the same sparse set with either method',async()=>{
+    const linked=announcementsByComplex(data.snapshot)
+    const districts=new Map(Object.values(data.locations).map(l=>[l.regionCode,0]))
+    for(const id of Object.keys(linked)) {
+      const code=data.locations[id].regionCode
+      districts.set(code,(districts.get(code)??0)+1)
+    }
+    const distribution=[0,1,2,3,4,5].map(count=>[...districts.values()].filter(value=>value===count).length)
+    expect(Object.keys(linked)).toHaveLength(34)
+    expect(distribution).toEqual([35,12,5,1,1,1])
+    const current=await createStudyRepositories(data,'complexes').mapRepository.findMap({bounds,zoom:14,filters:{applicationStatuses:['BEFORE_APPLICATION','APPLYING']}},signal)
+    const proposed=await createStudyRepositories(data,'announcements').mapRepository.findMap({bounds,zoom:14},signal)
+    expect(current.nodes).toEqual(proposed.nodes)
   })
   it.each(['complexes','announcements'] as const)('counts unique matching complexes at every zoom in %s mode',async mode=>{
     const repo=createStudyRepositories(data,mode).mapRepository

@@ -498,6 +498,7 @@ export function ComplexFilterToolbar({
                         topic === 'all' ? filterCountDescriptionId : summary === null ? undefined : summaryId
                       }
                       aria-expanded={expanded}
+                      data-study-filter={topic}
                       aria-label={`${label} 필터 ${expanded ? '닫기' : '열기'}`}
                       data-active={topic === 'all' ? appliedFilterCount > 0 : summary !== null}
                       onFocus={() => setRovingTopic(topic)}
@@ -622,6 +623,7 @@ export function ComplexFilterToolbar({
               title={summary ?? label}
               aria-controls="mobile-complex-filter-sheet"
               aria-expanded={mobileSheetOpen && mobileInitialTopic === topic}
+              data-study-filter={topic}
               aria-label={`모바일 ${label} 필터 열기`}
               aria-describedby={topic === 'all' ? filterCountDescriptionId : undefined}
               data-active={topic === 'all' ? appliedFilterCount > 0 : summary !== null}

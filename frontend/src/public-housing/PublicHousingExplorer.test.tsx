@@ -161,6 +161,27 @@ beforeEach(() => {
   localStorage.setItem('toadzip:welcome-completed', JSON.stringify({ expiresAt: Date.now() + 7 * 24 * 60 * 60 * 1000 }))
 })
 
+it('실험 지도 모드를 바꾸면 지도 이동 없이 공고 단지 집계를 다시 조회한다', async () => {
+  const repository=createRepository()
+  const all=aggregateMapResult()
+  const complexes=createMapRepository({...all,nodes:all.nodes.map(node=>({...node,uniqueComplexCount:10}))})
+  const announcements=createMapRepository({...all,nodes:all.nodes.map(node=>({...node,uniqueComplexCount:1}))})
+  function Experience() {
+    const [mode,setMode]=useState<'complexes'|'announcements'>('complexes')
+    return <PublicHousingExplorer showWelcome={false} repository={repository} mapRepository={mode==='complexes'?complexes:announcements}
+      study={{mode,onModeChange:setMode,newModeAvailable:true,announcements:{},onEvent:()=>{}}} />
+  }
+  render(<MemoryRouter><Experience /></MemoryRouter>)
+  fireEvent.click(screen.getByRole('button',{name:'전국 영역 알림'}))
+  await screen.findByRole('button',{name:'서울 10곳 지역 마커 선택'})
+  fireEvent.click(screen.getByRole('button',{name:'공고지도'}))
+  await screen.findByRole('button',{name:'서울 1곳 지역 마커 선택'})
+  expect(announcements.findMap).toHaveBeenCalledOnce()
+  fireEvent.click(screen.getByRole('button',{name:'단지지도'}))
+  await screen.findByRole('button',{name:'서울 10곳 지역 마커 선택'})
+  expect(complexes.findMap).toHaveBeenCalledTimes(2)
+})
+
 it.each(['SUBWAY_STATION', 'REGION'] as const)('외부 %s 위치 선택은 경계를 해제하고 지도만 이동한다', async (type) => {
   const repository = createRepository()
   const selected = { ...searchItem(type, 'local-1', '서울 강남구 역삼동', 37.5, 127.03), regionCode: null }
