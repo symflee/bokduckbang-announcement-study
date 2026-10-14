@@ -16,7 +16,8 @@
     "preview": "vite preview",
     "predev": "node scripts/prepare-pdf-assets.mjs",
     "prebuild": "node scripts/prepare-pdf-assets.mjs",
-    "generate:study": "node scripts/study/generate.mjs"
+    "generate:study": "node scripts/study/generate.mjs",
+    "analyze:study": "node scripts/study/analyze.mjs"
   },
   "dependencies": {
     "@rhwp/core": "0.8.6",

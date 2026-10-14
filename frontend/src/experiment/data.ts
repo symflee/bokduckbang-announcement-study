@@ -68,7 +68,7 @@ export function createStudyRepositories(dataset: StudyDataset, mode: MapMode) {
       groups.set(code, [...(groups.get(code) ?? []), node])
     }
     const aggregates: HousingMapAggregateNode[] = [...groups].map(([code, members]) => ({type: 'AGGREGATE', groupKey: `STUDY_${stage}:${code}`,
-      groupLabel: `${findCatalogRegion(code)?.displayName ?? dataset.locations[members[0].complexId].regionName}${mode === 'announcements' ? ' · 공고 단지' : ''}`,
+      groupLabel: stage === 3 ? (findCatalogRegion(code)?.displayName.split(' ').at(-1) ?? code) : stage === 2 ? (findCatalogRegion(code)?.districtName ?? findCatalogRegion(code)?.displayName ?? code) : (findCatalogRegion(code)?.provinceName ?? code),
       latitude: members.reduce((sum,n)=>sum+n.latitude,0)/members.length,
       longitude: members.reduce((sum,n)=>sum+n.longitude,0)/members.length,
       uniqueComplexCount: members.length, nextStage: stage === 1 ? 2 : stage === 2 ? 3 : 4, expansionZoom: stage === 1 ? 10 : stage === 2 ? 12 : 14}))

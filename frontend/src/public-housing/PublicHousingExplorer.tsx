@@ -1,3 +1,4 @@
+import { StudyAnnouncementChoices } from '../experiment/StudyAnnouncementChoices'
 import type { ExplorerStudy } from '../experiment/explorerStudy'
 import { useListMeasurement } from './analytics/useListMeasurement'
 import { captureProductEvent } from '../analytics/productAnalytics'
@@ -1580,14 +1581,10 @@ export function PublicHousingExplorer({
         </HousingResultsPanel>
       </div>
 
-      {study && studyChoices && <div className="study-choice-backdrop" onClick={() => setStudyChoices(null)}>
-        <section className="study-choices" role="dialog" aria-modal="true" aria-label="이 단지의 진행 중 공고" onClick={e => e.stopPropagation()} onKeyDown={e => { if (e.key === 'Escape') setStudyChoices(null) }}>
-          <h2>이 단지의 진행 중 공고</h2>
-          <p>확인할 공고를 선택해 주세요.</p>
-          {(study.announcements[studyChoices] ?? []).map(a => <button key={`${a.id}:${studyChoices}`} type="button" onClick={() => { setStudyChoices(null); openAnnouncementDetail(a.id, 'map') }}><small>{a.agency} · {a.status === 'APPLYING' ? '접수중' : '공고중'}</small><strong>{a.title}</strong><span>{a.dateLabel}</span></button>)}
-          <button type="button" onClick={() => setStudyChoices(null)}>닫기</button>
-        </section>
-      </div>}
+      {study && studyChoices && <StudyAnnouncementChoices complexId={studyChoices}
+        announcements={study.announcements[studyChoices] ?? []}
+        onClose={() => setStudyChoices(null)}
+        onSelect={id => {setStudyChoices(null); openAnnouncementDetail(id, 'map')}} />}
       <main ref={mapWorkspaceRef} className="housing-map-workspace">
         <div className="housing-map-filter" hidden={streetView.active} inert={streetView.active}>
           <ComplexFilterToolbar

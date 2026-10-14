@@ -80,7 +80,7 @@ function StudyExperience({dataset}:{dataset:StudyDataset}) {
     setCollapsed(false);setCoachStep(0);dispatch({type:'step',step})
   }
   const onSubmitted = useCallback((responseId:string)=>dispatch({type:'submitted',responseId}),[])
-  const summary = useMemo(()=>makeSummary(state,dataset.asOf,window.matchMedia('(max-width: 760px)').matches),[state,dataset.asOf])
+  const summary = useMemo(()=>makeSummary(state,dataset.asOf,window.matchMedia('(max-width: 767px)').matches),[state,dataset.asOf])
   const oldGuide = state.step.startsWith('old')
   const guidance = oldGuide ? [
     {target:'.housing-map-filter',text:'지도 위의 모집상태 필터를 열고, 공고중·접수중을 선택해 주세요. 선택한 조건은 바로 적용됩니다.'},
@@ -99,10 +99,11 @@ function StudyExperience({dataset}:{dataset:StudyDataset}) {
     return ()=>target?.classList.remove('study-highlight')
   },[showCoach,coachTarget,mode])
   return <div className="app-shell study-shell">
-    <div className="study-map" inert={state.step === 'intro' || resume}>
+    <div className="study-map" inert={['intro','survey','complete'].includes(state.step) || resume}>
       <PublicHousingExplorer key={mapKey} {...repositories} showWelcome={false} streetViewSupported={false}
         study={{mode,newModeAvailable:newAvailable,announcements,onModeChange:setMode,onEvent}} />
     </div>
+    {mode === 'announcements' && <div className="study-mode-legend">숫자 = 공고가 있는 단지 수</div>}
     <div className="study-data-notice">체험용 예시 데이터 · 실제 모집정보가 아닙니다 · 기준일 {dataset.asOf}</div>
     {state.test && <span className="study-test-label">테스트 세션 · 분석 제외</span>}
     {state.step === 'intro' && <div className="study-modal-backdrop"><section className="study-intro" role="dialog" aria-modal="true" aria-labelledby="study-title">
