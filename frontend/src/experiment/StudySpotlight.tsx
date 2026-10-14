@@ -12,6 +12,7 @@ interface Props {
   onPrevious: () => void
   onNext: () => void
   onClose?: () => void
+  closeLabel?: string
   onTargetActivate?: () => void
 }
 interface Placement {
@@ -20,7 +21,7 @@ interface Placement {
 }
 
 /** Keep the explanation next to the actual visible control, including mobile scrollable filters. */
-export function StudySpotlight({tip,index,total,label,nextLabel,onPrevious,onNext,onClose,onTargetActivate}: Props) {
+export function StudySpotlight({tip,index,total,label,nextLabel,onPrevious,onNext,onClose,closeLabel='방법 안내 닫기',onTargetActivate}: Props) {
   const activateRef = useRef(onTargetActivate)
   activateRef.current=onTargetActivate
   const card = useRef<HTMLElement>(null)
@@ -87,9 +88,9 @@ export function StudySpotlight({tip,index,total,label,nextLabel,onPrevious,onNex
     {placement?.frame && <div className="study-spotlight-frame" style={placement.frame} aria-hidden="true" />}
     <section ref={card} className="study-tip" role="note" aria-label={label}
       style={placement ? {left:placement.left,top:placement.top,width:placement.width,maxHeight:placement.maxHeight} : undefined}>
-      <div className="study-tip-heading"><span className="study-eyebrow">{label} · {index+1} / {total}</span>{onClose && <button onClick={onClose} aria-label="방법 안내 닫기">×</button>}</div>
+      <div className="study-tip-heading"><span className="study-eyebrow">{label} · {index+1} / {total}</span>{onClose && <button onClick={onClose} aria-label={closeLabel}>×</button>}</div>
       <h2>{tip.title}</h2><p id="study-tip-description">{tip.text}</p>
-      <div className="study-tip-actions"><button disabled={index===0} onClick={onPrevious}>이전</button><Button onClick={onNext}>{nextLabel}</Button></div>
+      <div className="study-tip-actions">{total > 1 && <button disabled={index===0} onClick={onPrevious}>이전</button>}<Button onClick={onNext}>{nextLabel}</Button></div>
     </section>
   </>
 }

@@ -84,7 +84,7 @@
   box-shadow:0 24px 80px #102c2833;
 }
 .study-step-introduction::backdrop { background:#16302770; backdrop-filter:blur(4px); }
-.study-step-progress { display:grid; grid-template-columns:repeat(4,1fr); gap:8px; margin:0 0 32px; padding:0; list-style:none; }
+.study-step-progress { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin:0 0 32px; padding:0; list-style:none; }
 .study-step-progress li { font-size:10px; line-height:1.5; color:var(--ds-color-muted); white-space:nowrap; }
 .study-step-progress li > span { display:block; height:4px; border-radius:2px; background:var(--ds-color-divider); margin-bottom:8px; }
 .study-step-progress li[aria-current] { color:var(--ds-color-action); font-weight:700; }
@@ -122,7 +122,20 @@ button.study-spotlit { background:var(--ds-color-action-selected) !important; co
 .study-tip h2 { font-size:20px; line-height:1.45; letter-spacing:-.04em; margin:14px 0 10px; }
 .study-tip p { font-size:14px; line-height:1.8; color:var(--ds-color-label); margin:0 0 20px; word-break:keep-all; }
 .study-tip-actions { display:flex; gap:12px; align-items:center; }
-.study-tip-actions > button:first-child { flex:none; border:0; background:none; color:var(--ds-color-label); font-size:13px; padding:10px 4px; cursor:pointer; }
+.study-tip-actions > button:first-child:not(:only-child) { flex:none; border:0; background:none; color:var(--ds-color-label); font-size:13px; padding:10px 4px; cursor:pointer; }
 .study-tip-actions > button:disabled { opacity:.4; cursor:default; }
 .study-tip-actions > button:last-child { flex:1; }
 @media(max-width:767px) { .study-tip { padding:20px; } .study-tip h2 { font-size:18px; } }
+
+.study-method-sequence { padding:14px 16px; border-radius:12px; color:var(--ds-color-action); background:var(--ds-color-action-soft); font-size:14px; line-height:1.8; margin:0 0 24px; word-break:keep-all; }
+.study-method-recap > div { padding:12px 0; border-top:1px solid var(--ds-color-divider); }
+.study-method-recap strong { font-size:14px; }
+.study-method-recap p { margin:6px 0 0; font-size:12px; }
+.study-rating h2 { font-size:28px; }
+.study-rating-options { display:grid; grid-template-columns:repeat(5,1fr); gap:8px; }
+.study-rating-options button { display:flex; flex-direction:column; align-items:center; gap:10px; padding:14px 4px; border:1px solid var(--ds-color-divider); border-radius:12px; background:var(--ds-color-surface); color:var(--ds-color-text); cursor:pointer; }
+.study-rating-options button:hover, .study-rating-options button:focus-visible { border-color:var(--ds-color-action); background:var(--ds-color-action-soft); }
+.study-rating-options strong { font-size:22px; }
+.study-rating-options span { font-size:10px; line-height:1.5; word-break:keep-all; }
+.study-rating-unsure { width:100%; margin-top:14px; padding:12px; border:1px solid var(--ds-color-divider); border-radius:10px; color:var(--ds-color-label); background:var(--ds-color-surface); cursor:pointer; }
+@media(max-width:767px) { .study-rating-options { gap:5px; } .study-rating-options strong { font-size:20px; } .study-rating-options span { font-size:9px; } }

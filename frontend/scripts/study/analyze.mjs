@@ -4,10 +4,10 @@ import { fileURLToPath } from 'node:url'
 
 export const questions = {
   interest:'공공주택에 얼마나 관심이 있나요?',
-  ease_old:'기존 방식으로 공고를 찾기 쉬웠나요?',
-  ease_new:'공고지도로 공고를 찾기 쉬웠나요?',
-  preference:'어떤 방식이 더 편했나요?',
-  need:'별도의 공고지도가 필요하다고 생각하나요?',
+  ease_old:'ease_old',
+  ease_new:'ease_new',
+  preference:'공고를 찾을 때 어떤 방식을 더 선호하나요?',
+  need:'모집상태 필터가 있더라도, 별도의 공고지도 탭이 필요하다고 느끼나요?',
   reasons:'그렇게 선택한 이유는 무엇인가요?',
   comment:'헷갈린 점이나 바라는 점을 자유롭게 남겨 주세요.',
 }
@@ -33,38 +33,57 @@ const booleanText = value=>String(value).trim().toLowerCase()
 const truth = value=>booleanText(value)==='true'
 const ratio = (a,b)=>b ? a/b : null
 function median(values) {const v=values.toSorted((a,b)=>a-b);return v.length ? (v[Math.floor((v.length-1)/2)]+v[Math.floor(v.length/2)])/2 : null}
-export function analyze(rows) {
-  const seen=new Set(), valid=[], excluded={test:0,duplicate:0,invalid:0}
-  for(const row of rows) {
-    if(truth(row.is_test)) {excluded.test++;continue}
-    if(!row.session_id || booleanText(row.is_test)!=='false' || row.experiment_version!=='announcement-map-v3' || row.question_version!=='survey-v1' || row.dataset_version!=='national-500-v2'
-      || !['success','skipped'].includes(row.old_outcome) || !['success','skipped'].includes(row.new_outcome)
-      || !['기존 방식','공고지도','차이 없음','둘 다 불편함','판단하기 어려움'].includes(row[questions.preference])
-      || !['1','2','3','4','5'].includes(row[questions.need])) {excluded.invalid++;continue}
-    if(seen.has(row.session_id)) {excluded.duplicate++;continue}
-    seen.add(row.session_id);valid.push(row)
-  }
-  const preference=Object.fromEntries(['기존 방식','공고지도','차이 없음','둘 다 불편함','판단하기 어려움'].map(option=>[option,valid.filter(r=>r[questions.preference]===option).length]))
-  const need=valid.map(r=>Number(r[questions.need]))
+const preferences=['필터로 찾기','공고지도로 찾기','차이 없음','둘 다 불편함','판단하기 어려움']
+const orders=['old,new','new,old']
+const reasons=['공고 위치를 한눈에 볼 수 있어서','공고 핀에서 필요한 정보를 볼 수 있어서','모집상태 필터 조작이 편해서','모집상태 필터만으로 충분해서','핀이나 메뉴가 복잡해서','두 방법의 차이를 느끼지 못해서']
+const ratings=['1','2','3','4','5','unsure']
+function metrics(rows) {
+  const preference=Object.fromEntries(preferences.map(option=>[option,rows.filter(r=>r[questions.preference]===option).length]))
+  const need=rows.map(r=>number(r[questions.need])).filter(n=>n!==null)
   const methods={}
   for(const method of ['old','new']) {
-    const normal=valid.filter(r=>booleanText(r[`${method}_interrupted`])==='false' && number(r[`${method}_errors`])===0 && number(r[`${method}_retries`])===0
-      && number(r[`${method}_elapsed_ms`])!==null && number(r[`${method}_elapsed_ms`])>=0 && ['true','false'].includes(booleanText(r[`${method}_help`])))
-    const success=normal.filter(r=>r[`${method}_outcome`]==='success')
-    const unaided=success.filter(r=>booleanText(r[`${method}_help`])==='false')
-    methods[method]={normalRecords:normal.length,interruptedOrInvalidRecords:valid.length-normal.length,
-      success:success.length,unaidedSuccess:unaided.length,unaidedSuccessRate:ratio(unaided.length,normal.length),
-      helpUseRate:ratio(normal.filter(r=>truth(r[`${method}_help`])).length,normal.length),
-      medianSuccessSeconds:median(success.map(r=>Number(r[`${method}_elapsed_ms`])/1000)),
-      medianUnaidedSuccessSeconds:median(unaided.map(r=>Number(r[`${method}_elapsed_ms`])/1000))}
+    const normal=rows.filter(r=>booleanText(r[`${method}_interrupted`])==='false' && number(r[`${method}_errors`])===0 && number(r[`${method}_retries`])===0
+      && number(r[`${method}_elapsed_ms`])!==null && number(r[`${method}_elapsed_ms`])>=0)
+    const completed=normal.filter(r=>r[`${method}_outcome`]==='success')
+    const ease=rows.map(r=>number(r[`ease_${method}`])).filter(n=>n!==null)
+    methods[method]={completed:rows.filter(r=>r[`${method}_outcome`]==='success').length,
+      skipped:rows.filter(r=>r[`${method}_outcome`]==='skipped').length,
+      completionRate:ratio(rows.filter(r=>r[`${method}_outcome`]==='success').length,rows.length),
+      additionalHelpUseRate:ratio(rows.filter(r=>truth(r[`${method}_help`])).length,rows.length),
+      normalRecords:normal.length,interruptedOrInvalidRecords:rows.length-normal.length,
+      medianSuccessSeconds:median(completed.map(r=>Number(r[`${method}_elapsed_ms`])/1000)),
+      easeMean:ratio(ease.reduce((a,b)=>a+b,0),ease.length),easeUnsure:rows.length-ease.length,
+      easeDistribution:Object.fromEntries(ratings.map(value=>[value,rows.filter(r=>r[`ease_${method}`]===value).length]))}
   }
-  const newPreferenceRate=ratio(preference['공고지도'],valid.length)
-  const highNeedRate=ratio(need.filter(n=>n>=4).length,valid.length)
-  return {validResponses:valid.length,excluded,preference,newPreferenceRate,needMean:ratio(need.reduce((a,b)=>a+b,0),need.length),highNeedRate,methods,
-    reviewCriteria:{enoughResponses:valid.length>=30,newPreference: newPreferenceRate===null ? null : newPreferenceRate>=.6,need:highNeedRate===null?null:highNeedRate>=.6,
-      unaided:methods.old.unaidedSuccessRate===null || methods.new.unaidedSuccessRate===null?null:methods.new.unaidedSuccessRate>=methods.old.unaidedSuccessRate},
-    comments:valid.filter(r=>r[questions.comment] || r[questions.reasons]).map(r=>({sessionId:r.session_id,reasons:r[questions.reasons],comment:r[questions.comment]})),
-    interpretation:'기존→신규 고정 순서로 학습 효과가 포함됩니다. 사용량 증가의 인과 증거가 아닙니다. 정상 측정의 성공률·도움 사용률과 성공자 소요시간을 표시합니다.'}
+  return {responses:rows.length,preference,reasons:Object.fromEntries(reasons.map(reason=>[reason,rows.filter(row=>row[questions.reasons]?.includes(reason)).length])),newPreferenceRate:ratio(preference['공고지도로 찾기'],rows.length),
+    needMean:ratio(need.reduce((a,b)=>a+b,0),need.length),needUnsure:rows.length-need.length,
+    highNeedRate:ratio(need.filter(n=>n>=4).length,rows.length),methods}
+}
+export function analyze(rows) {
+  const seen=new Set(),valid=[],excluded={test:0,duplicate:0,invalid:0}
+  for(const row of rows) {
+    if(truth(row.is_test)){excluded.test++;continue}
+    const validMethods=['old','new'].every(method=>['success','skipped'].includes(row[`${method}_outcome`])
+      && ratings.includes(row[`ease_${method}`]) && ['true','false'].includes(booleanText(row[`${method}_help`]))
+      && (row[`${method}_outcome`]==='skipped' ? !row[`${method}_completion_source`]
+        : row[`${method}_completion_source`]===(method==='old'?'filtered_complex':'announcement_pin')))
+    if(!row.session_id || booleanText(row.is_test)!=='false' || row.experiment_version!=='announcement-map-v4'
+      || row.question_version!=='survey-v2' || row.dataset_version!=='national-500-v2' || !orders.includes(row.method_order)
+      || !validMethods || !preferences.includes(row[questions.preference]) || !['1','2','3','4','5','판단하기 어려움'].includes(row[questions.need])) {
+      excluded.invalid++;continue
+    }
+    if(seen.has(row.session_id)){excluded.duplicate++;continue}
+    seen.add(row.session_id);valid.push(row)
+  }
+  const total=metrics(valid)
+  return {...total,validResponses:valid.length,excluded,
+    byOrder:Object.fromEntries(orders.map(order=>[order,metrics(valid.filter(r=>r.method_order===order))])),
+    byCompletion:{bothCompleted:metrics(valid.filter(r=>r.old_outcome==='success' && r.new_outcome==='success')),
+      includesSkip:metrics(valid.filter(r=>r.old_outcome==='skipped' || r.new_outcome==='skipped'))},
+    reviewCriteria:{enoughResponses:valid.length>=30,newPreference:total.newPreferenceRate===null?null:total.newPreferenceRate>=.6,
+      need:total.highNeedRate===null?null:total.highNeedRate>=.6},
+    comments:valid.filter(r=>r[questions.comment] || r[questions.reasons]).map(r=>({sessionId:r.session_id,order:r.method_order,reasons:r[questions.reasons],comment:r[questions.comment]})),
+    interpretation:'두 방법을 설명한 뒤 직접 체험한 참여자의 선호와 필요성입니다. 순서는 세션마다 무작위 배정되며 순서별 결과를 함께 봅니다. 완료율·추가 도움·시간은 참고 지표이며 실제 사용량 증가의 증거가 아닙니다.'}
 }
 if(process.argv[1]===fileURLToPath(import.meta.url)) {
   if(!process.argv[2]) {console.error('Usage: npm run analyze:study -- path/to/tally-export.csv');process.exitCode=1}

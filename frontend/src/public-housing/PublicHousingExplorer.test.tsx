@@ -182,6 +182,33 @@ it('실험 지도 모드를 바꾸면 지도 이동 없이 공고 단지 집계�
   expect(complexes.findMap).toHaveBeenCalledTimes(2)
 })
 
+it.each(['filter', 'pin', 'multiple', 'list'] as const)('실험 상세 요청과 실제 표시를 연결한다: %s', async (route) => {
+  const repository=createRepository(), onEvent=vi.fn()
+  const choice={id:'201',title:'성남 청년 행복주택 입주자 모집 공고',agency:'LH',status:'APPLYING' as const,dateLabel:'접수 마감 2026.08.30'}
+  function Experience() {
+    const [mode,setMode]=useState<'complexes'|'announcements'>('complexes')
+    return <PublicHousingExplorer showWelcome={false} repository={repository} mapRepository={repository}
+      study={{mode,onModeChange:setMode,newModeAvailable:true,announcements:{'17':route==='multiple'?[choice,{...choice,id:'202',title:'다른 공고'}]:[choice]},onEvent}} />
+  }
+  render(<MemoryRouter initialEntries={[route==='filter'?'/?complexApplicationStatuses=APPLYING':'/']}><Experience /></MemoryRouter>)
+  fireEvent.click(screen.getByRole('button',{name:'초기 영역 알림'}))
+  await screen.findByRole('button',{name:'서울가람 행복주택 지도 마커 선택'})
+  if(route!=='filter') fireEvent.click(screen.getByRole('button',{name:'공고지도'}))
+  if(route==='list') {
+    fireEvent.click(screen.getByRole('button',{name:'공고 목록'}))
+    fireEvent.click(await screen.findByRole('button',{name:'성남 청년 행복주택 입주자 모집 공고 상세 보기'}))
+  } else {
+    fireEvent.click(screen.getByRole('button',{name:'서울가람 행복주택 지도 마커 선택'}))
+    if(route==='filter') fireEvent.click(await screen.findByRole('button',{name:'성남 청년 행복주택 입주자 모집 공고 상세 보기'}))
+    if(route==='multiple') fireEvent.click(await screen.findByRole('button',{name:/성남 청년 행복주택 입주자 모집 공고/}))
+  }
+  await screen.findByRole('heading',{name:'성남 청년 행복주택 입주자 모집 공고'})
+  const request=onEvent.mock.calls.map(([event])=>event).find(event=>event.type==='request-detail')
+  expect(request).toMatchObject({id:'201',source:route==='filter'?'filtered_complex':route==='list'?'other':'announcement_pin',complexId:route==='list'?null:'17'})
+  if(route==='filter') expect(request.applicationStatuses).toEqual(['APPLYING'])
+  await waitFor(()=>expect(onEvent).toHaveBeenCalledWith({type:'detail',requestId:request.requestId,id:'201',status:'APPLYING'}))
+})
+
 it.each(['SUBWAY_STATION', 'REGION'] as const)('외부 %s 위치 선택은 경계를 해제하고 지도만 이동한다', async (type) => {
   const repository = createRepository()
   const selected = { ...searchItem(type, 'local-1', '서울 강남구 역삼동', 37.5, 127.03), regionCode: null }

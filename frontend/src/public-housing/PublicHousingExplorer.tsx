@@ -1,5 +1,5 @@
 import { StudyAnnouncementChoices } from '../experiment/StudyAnnouncementChoices'
-import type { ExplorerStudy } from '../experiment/explorerStudy'
+import type { ExplorerStudy, StudyDetailRequest } from '../experiment/explorerStudy'
 import { useListMeasurement } from './analytics/useListMeasurement'
 import { captureProductEvent } from '../analytics/productAnalytics'
 import { useProductDetailAnalytics } from './analytics/useProductDetailAnalytics'
@@ -195,6 +195,8 @@ export function PublicHousingExplorer({
   studyRef.current = study
   const [studyMapReady, setStudyMapReady] = useState(false)
   const [studyChoices, setStudyChoices] = useState<string | null>(null)
+  const [studyDetailRequest, setStudyDetailRequest] = useState<StudyDetailRequest | null>(null)
+  const studyComplexSelection = useRef<{id:string; applicationStatuses:readonly string[]} | null>(null)
   const lastStudyMapStatus = useRef('loading')
   const studyMapAvailability = useCallback((status: 'loading' | 'ready' | 'unavailable') => {
     if (lastStudyMapStatus.current === 'unavailable' && status === 'loading') studyRef.current?.onEvent({type:'retry'})
@@ -799,8 +801,12 @@ export function PublicHousingExplorer({
     return () => window.clearTimeout(timeout)
   }, [announcementDetail, complexDetail, detailLocation])
 
-  const openDetail = useCallback((kind: ResultTab, id: string, entryPoint: DetailEntryPoint) => {
-    if (kind === 'announcements') studyRef.current?.onEvent({type:'request-detail',id})
+  const openDetail = useCallback((kind: ResultTab, id: string, entryPoint: DetailEntryPoint, studyOrigin?: Pick<StudyDetailRequest, 'source' | 'complexId' | 'applicationStatuses'>) => {
+    if (studyRef.current && kind === 'announcements') {
+      const request: StudyDetailRequest = {requestId:crypto.randomUUID(), id, source:'other', complexId:null, applicationStatuses:[], ...studyOrigin}
+      setStudyDetailRequest(request)
+      studyRef.current.onEvent({type:'request-detail', ...request})
+    }
     cancelCurrentLocation()
     closeStreetView('TARGET_CHANGED', false)
     if (window.matchMedia?.('(max-width: 1023px)').matches) {
@@ -866,6 +872,7 @@ export function PublicHousingExplorer({
 
 
   const applyComplexFilters = useCallback((filters: ComplexSearchFilters) => {
+    studyComplexSelection.current=null
     studyRef.current?.onEvent({type: 'path', path: 'filter'})
     cancelCurrentLocation()
     const currentSearch = new URLSearchParams(location.search)
@@ -911,6 +918,7 @@ export function PublicHousingExplorer({
   ])
 
   const openComplexDetail = useCallback((complexId: string, entryPoint: DetailEntryPoint = 'list') => {
+    studyComplexSelection.current=null
     pendingDetailCameraRef.current = {
       id: complexId,
       revision: viewportRevisionRef.current,
@@ -920,18 +928,29 @@ export function PublicHousingExplorer({
   }, [openDetail])
 
   const openComplexMarker = useCallback((complexId: string) => {
+    studyComplexSelection.current = studyRef.current?.mode === 'complexes'
+      ? {id:complexId, applicationStatuses:[...(complexFilters.applicationStatuses ?? [])]} : null
     pendingDetailCameraRef.current = null
     studyRef.current?.onEvent({type: 'path', path: 'complex'})
     captureProductEvent('map_marker_selected', { marker_type: 'complex', complex_id: complexId })
     openDetail('complexes', complexId, 'map')
-  }, [openDetail])
+  }, [openDetail, complexFilters.applicationStatuses])
 
-  const openAnnouncementDetail = useCallback((announcementId: string, entryPoint: DetailEntryPoint = 'list') => {
+  const openAnnouncementDetail = useCallback((announcementId: string, entryPoint: DetailEntryPoint = 'list', pinComplexId?:string) => {
     pendingDetailCameraRef.current = null
-    openDetail('announcements', announcementId, entryPoint)
-  }, [openDetail])
+    const selected=studyComplexSelection.current
+    const fromFilteredComplex=entryPoint === 'detail' && selected && complexDetail.complexId === selected.id
+      && studyRef.current?.announcements[selected.id]?.some(item=>item.id === announcementId)
+    const origin: Pick<StudyDetailRequest, 'source' | 'complexId' | 'applicationStatuses'> = pinComplexId && entryPoint === 'map'
+      ? {source:'announcement_pin',complexId:pinComplexId,applicationStatuses:[]}
+      : fromFilteredComplex ? {source:'filtered_complex',complexId:selected.id,applicationStatuses:selected.applicationStatuses}
+      : {source:'other',complexId:null,applicationStatuses:[]}
+    openDetail('announcements', announcementId, entryPoint, origin)
+  }, [openDetail, complexDetail.complexId])
 
   const closeDetail = useCallback(() => {
+    setStudyDetailRequest(null)
+    studyComplexSelection.current=null
     trackDetailAction('detail_closed')
     closeStreetView('USER_CLOSED', false)
     pendingDetailCameraRef.current = null
@@ -1288,7 +1307,7 @@ export function PublicHousingExplorer({
         onMarkerSelect: study?.mode === 'announcements' ? (id) => {
           study.onEvent({type: 'path', path: 'announcement_map'})
           const choices = study.announcements[id] ?? []
-          if (choices.length === 1) openAnnouncementDetail(choices[0].id, 'map')
+          if (choices.length === 1) openAnnouncementDetail(choices[0].id, 'map', id)
           else if (choices.length > 1) setStudyChoices(id)
         } : openComplexMarker,
         onTransitionInterrupt: interruptClusterTransition,
@@ -1304,8 +1323,9 @@ export function PublicHousingExplorer({
   useEffect(() => {
     function report() {
       if (document.visibilityState === 'hidden') return
-      if (announcementDetail.status === 'ready' && announcementDetail.detail) {
-        studyRef.current?.onEvent({type: 'detail', id: announcementDetail.detail.announcementId,
+      if (studyDetailRequest && detailLocation.kind === 'announcement' && detailLocation.announcementId === studyDetailRequest.id
+        && announcementDetail.status === 'ready' && announcementDetail.detail?.announcementId === studyDetailRequest.id) {
+        studyRef.current?.onEvent({type: 'detail', requestId:studyDetailRequest.requestId, id: announcementDetail.detail.announcementId,
           status: announcementDetail.detail.applicationStatus})
       }
     }
@@ -1313,7 +1333,7 @@ export function PublicHousingExplorer({
     document.addEventListener('visibilitychange', report)
     if (announcementDetail.status === 'error') studyRef.current?.onEvent({type: 'error', surface: 'detail'})
     return () => document.removeEventListener('visibilitychange', report)
-  }, [announcementDetail])
+  }, [announcementDetail, studyDetailRequest, detailLocation])
   const hasDetail = complexDetail.status !== 'closed'
     || announcementDetail.status !== 'closed'
   const selectedAnnouncementId = detailLocation.kind === 'announcement'
@@ -1585,7 +1605,7 @@ export function PublicHousingExplorer({
       {study && studyChoices && <StudyAnnouncementChoices complexId={studyChoices}
         announcements={study.announcements[studyChoices] ?? []}
         onClose={() => setStudyChoices(null)}
-        onSelect={id => {setStudyChoices(null); openAnnouncementDetail(id, 'map')}} />}
+        onSelect={id => {setStudyChoices(null); openAnnouncementDetail(id, 'map', studyChoices)}} />}
       <main ref={mapWorkspaceRef} className="housing-map-workspace">
         <div className="housing-map-filter" hidden={streetView.active} inert={streetView.active}>
           <ComplexFilterToolbar

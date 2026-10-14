@@ -5,9 +5,12 @@ export function tallyFields(summary:ExperimentSummary): Record<string,string> {
   const fields:Record<string,string> = {
     experiment_version:summary.experimentVersion, question_version:summary.questionVersion, dataset_version:summary.datasetVersion,
     as_of:summary.asOf, session_id:summary.sessionId, screen:summary.screen, is_test:String(summary.test),
+    method_order:summary.order.join(','),
   }
   for (const key of ['old','new'] as const) {
     const trial = summary[key]
+    fields[`ease_${key}`] = trial.ease === null ? '' : String(trial.ease)
+    fields[`${key}_completion_source`] = trial.completionSource ?? ''
     fields[`${key}_outcome`] = trial.outcome
     fields[`${key}_success`] = String(trial.outcome === 'success')
     fields[`${key}_unaided`] = String(trial.outcome === 'success' && trial.helpAtMs === null)

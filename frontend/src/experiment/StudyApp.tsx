@@ -4,10 +4,11 @@ import { useNavigate } from 'react-router'
 import { PublicHousingExplorer } from '../public-housing/PublicHousingExplorer'
 import { announcementsByComplex, createStudyRepositories, loadStudyDataset, type MapMode, type StudyDataset } from './data'
 import type { ExplorerStudyEvent } from './explorerStudy'
-import { activeTrial, hasStepIntroduction, initialState, makeSummary, readState, saveState, studyReducer, type StudyAction, type StudyStep } from './state'
+import { activeTrial, hasStepIntroduction, initialState, makeSummary, readState, saveState, studyReducer, METHOD_NAMES, type EaseRating, type StudyAction, type StudyStep } from './state'
 import { TallySurvey } from './TallySurvey'
 import { StudyMapBoundary } from './StudyMapBoundary'
 import { StudyStepIntroduction } from './StudyStepIntroduction'
+import { StudyRating } from './StudyRating'
 import { StudySpotlight, type StudyTip } from './StudySpotlight'
 
 const SERVICE_TOUR: readonly StudyTip[] = [
@@ -46,13 +47,18 @@ function StudyExperience({dataset}:{dataset:StudyDataset}) {
   const stateRef = useRef(state)
   const readyRef = useRef(false)
   const pausedRef = useRef(resume)
+  const eventBlockedRef = useRef(resume)
   const lastTick = useRef(performance.now())
   stateRef.current = state
-  pausedRef.current = resume || introduction !== null
   const key = activeTrial(state)
   const trial = key ? state.trials[key] : null
   const newAvailable = ['new-task','compare','survey','complete'].includes(state.step)
   const showCoach = !resume && !coachDismissed && trial?.outcome === 'active' && trial.helpAtMs !== null
+  const showInitialHint = !resume && trial?.outcome === 'active' && !trial.initialHintSeen && !showCoach
+  const ratingOpen = trial && trial.outcome !== 'active' && trial.ease === null
+  const ordinal = key ? state.order.indexOf(key)+1 : 3
+  eventBlockedRef.current = resume || introduction !== null || Boolean(ratingOpen)
+  pausedRef.current = resume || introduction !== null || showCoach || showInitialHint || Boolean(ratingOpen)
   const touring = state.step === 'warmup' && state.stageStarted
   const repositories = useMemo(()=>createStudyRepositories(dataset,mode),[dataset,mode])
   const announcements = useMemo(()=>announcementsByComplex(dataset.snapshot),[dataset])
@@ -81,9 +87,9 @@ function StudyExperience({dataset}:{dataset:StudyDataset}) {
   const onEvent = useCallback((event:ExplorerStudyEvent) => {
     if (event.type === 'ready') {flush();readyRef.current=event.ready;setReady(event.ready);return}
     if (event.type === 'error' && event.surface !== 'detail') {flush();readyRef.current=false;setReady(false)}
-    if (pausedRef.current) return
+    if (eventBlockedRef.current) return
     if (event.type === 'path' || event.type === 'request-detail') send(event)
-    if (event.type === 'detail') send({type:'success',id:event.id,status:event.status})
+    if (event.type === 'detail') send({type:'success',requestId:event.requestId,id:event.id,status:event.status})
     if (event.type === 'retry') send(event)
     if (event.type === 'error') send({type:'error'})
   },[flush,send])
@@ -93,6 +99,11 @@ function StudyExperience({dataset}:{dataset:StudyDataset}) {
       readyRef.current=false;setReady(false);setMode('complexes');flushSync(()=>navigate(SEOUL,{replace:true}));setMapKey(k=>k+1)
     }
     setCollapsed(false);setCoachStep(0);setCoachDismissed(false);dispatch({type:'step',step})
+  }
+  function rate(value:EaseRating) {
+    if (!key) return
+    dispatch({type:'rate',value})
+    next(ordinal === 1 ? `${state.order[1]}-task` : 'compare')
   }
   const onSubmitted = useCallback((responseId:string)=>dispatch({type:'submitted',responseId}),[])
   const summary = useMemo(()=>makeSummary(state,dataset.asOf,window.matchMedia('(max-width: 767px)').matches),[state,dataset.asOf])
@@ -106,7 +117,7 @@ function StudyExperience({dataset}:{dataset:StudyDataset}) {
     {target:'.study-announcement-pin',title:'공고 요약 핀을 눌러 주세요',text:'기관·공고명·일정이 적힌 핀에서 공고 상세를 바로 열 수 있어요. 같은 단지에 여러 공고가 있으면 하나를 선택해 주세요.'},
   ]
   return <div className="app-shell study-shell">
-    <div className="study-map" inert={['intro','survey','complete'].includes(state.step) || resume || introduction !== null}>
+    <div className="study-map" inert={['intro','survey','complete'].includes(state.step) || resume || introduction !== null || Boolean(ratingOpen)}>
       <StudyMapBoundary key={mapKey} ready={ready} onFailure={()=>onEvent({type:'error',surface:'map'})} onRetry={()=>{flushSync(()=>send({type:'retry'}));saveState(stateRef.current);window.location.reload()}}>
       <PublicHousingExplorer {...repositories} showWelcome={false} streetViewSupported={false}
         study={{mode,newModeAvailable:newAvailable,announcements,onModeChange:setMode,onEvent}} />
@@ -119,36 +130,42 @@ function StudyExperience({dataset}:{dataset:StudyDataset}) {
       <img src="/logo-bok-search.svg" alt="복덕방" width="48" height="48" />
       <span className="study-eyebrow">공공주택 지도 체험 · 약 4~6분</span>
       <h1 id="study-title">공고를 찾는 두 가지 방법,<br />직접 써 보고 알려 주세요.</h1>
-      <p>공공주택에 관심 있는 분을 위한 기능 비교입니다. 먼저 서비스를 간단히 소개하고 주요 버튼을 안내합니다. 소개가 끝나면 본격적으로 두 가지 방법을 체험합니다.</p>
-      <ol><li>서비스와 주요 버튼 소개</li><li>두 가지 방법으로 공고 찾기</li><li>느낀 점을 설문으로 남기기</li></ol>
-      <p className="study-muted">단지·위치·모집조건은 체험용 예시입니다. 이름과 연락처는 묻지 않습니다. 설문을 제출하면 무작위 참여번호와 함께 성공 여부·도움 사용·소요 시간·이용 경로가 Tally에 저장됩니다. 제출 전 이탈 기록은 수집하지 않습니다.</p>
+      <p>공공주택에 관심 있는 분을 위한 기능 비교입니다. 먼저 서비스를 간단히 소개한 뒤, 두 가지 방법을 체험하고 의견을 남깁니다. 각 방법은 시작 전에 설명해 드려요.</p>
+      <p>서비스 소개가 끝나면 아래 세 단계로 진행합니다.</p><ol><li>첫 번째 방법 체험</li><li>두 번째 방법 체험</li><li>비교·설문</li></ol>
+      <p className="study-muted">단지·위치·모집조건은 체험용 예시입니다. 이름과 연락처는 묻지 않습니다. 설문을 제출하면 무작위 참여번호와 함께 체험 순서·완료 여부·평가·추가 도움 사용·소요 시간·이용 경로가 Tally에 저장됩니다. 제출 전 이탈 기록은 수집하지 않습니다.</p>
       {!import.meta.env.VITE_TALLY_FORM_ID && <p className="study-setup-notice">사전 점검 버전: 설문 연결 전이며 응답을 수집하지 않습니다.</p>}
       <button className="study-primary" autoFocus onClick={()=>{navigate(SEOUL,{replace:true});setMapKey(k=>k+1);next('warmup')}}>안내를 확인했고, 시작할게요 <span aria-hidden="true">→</span></button>
     </section></div>}
     {resume && <div className="study-modal-backdrop"><section className="study-intro" role="dialog" aria-modal="true" aria-label="체험 이어하기"><h1>진행 중이던 체험이 있어요</h1><p>같은 참여번호로 이어갑니다. 페이지를 떠나 있던 시간은 제외하고, 이 과제는 중단 후 재개한 기록으로 구분합니다.</p><button className="study-primary" autoFocus onClick={()=>{lastTick.current=performance.now();setResume(false)}}>이어서 체험하기</button></section></div>}
-    {introduction && <StudyStepIntroduction key={introduction} step={introduction} onStart={()=>{lastTick.current=performance.now();dispatch({type:'begin-step'})}} />}
-    {!['intro','warmup','survey','complete'].includes(state.step) && !resume && !introduction && !showCoach && <aside className={`study-task-card ${collapsed ? 'is-collapsed' : ''}`} aria-label="체험 과제">
-      <div className="study-task-heading"><span className="study-eyebrow">{state.step.startsWith('old') ? '02 · 첫 번째 방법' : state.step.startsWith('new') ? '03 · 두 번째 방법' : '04 · 비교와 설문'}</span><button onClick={()=>setCollapsed(c=>!c)} aria-expanded={!collapsed} aria-label={collapsed ? '과제 펼치기' : '과제 접기'}>{collapsed ? '＋' : '−'}</button></div>
+    {introduction && <StudyStepIntroduction key={introduction} step={introduction} order={state.order} onStart={()=>{lastTick.current=performance.now();dispatch({type:'begin-step'})}} />}
+    {!['intro','warmup','survey','complete'].includes(state.step) && !resume && !introduction && !showCoach && !showInitialHint && !ratingOpen && <aside className={`study-task-card ${collapsed ? 'is-collapsed' : ''}`} aria-label="체험 과제">
+      <div className="study-task-heading"><span className="study-eyebrow">{ordinal} / 3 · {key ? METHOD_NAMES[key] : '비교·설문'}</span><button onClick={()=>setCollapsed(c=>!c)} aria-expanded={!collapsed} aria-label={collapsed ? '과제 펼치기' : '과제 접기'}>{collapsed ? '＋' : '−'}</button></div>
       {!collapsed && <>
-        {trial ? <><h2>{trial.outcome === 'success' ? '공고 내용을 확인했어요.' : trial.outcome === 'skipped' ? '이번 방법의 체험을 마쳤어요.' : '공고가 올라온 단지를 찾고, 공고 내용을 확인해 주세요.'}</h2>
-            {trial.outcome === 'active' ? <>
-              <p>{!ready ? '지도와 데이터를 준비하는 동안 시간 측정은 멈춥니다.' : trial.helpAtMs === null ? '편한 방법으로 찾아보세요. 필요하면 언제든 도움을 받을 수 있어요.' : '방법 보기를 눌러 안내를 다시 확인할 수 있어요.'}</p>
-              <div className="study-actions"><button onClick={()=>{setCoachStep(0);setCoachDismissed(false);send({type:'help',reason:'requested'})}}>방법 보기</button></div>
-              {trial.helpAtMs !== null && <button className="study-text-button" onClick={()=>send({type:'skip'})}>도움을 봐도 어렵다면, 다음으로</button>}
-              {trial.errors > 0 && <p className="study-muted">연결 오류가 기록되었습니다. 지도 오류 안내의 다시 시도를 이용해 주세요.</p>}
-            </> : <><p>{key === 'old' ? '첫 번째 방법의 체험이 끝났습니다. 이제 두 번째 방법으로 넘어갈게요.' : '두 가지 방법을 모두 체험했어요. 비교한 느낌을 알려 주세요.'}</p><button className="study-primary" onClick={()=>next(key === 'old' ? 'new-task' : 'compare')}>{key === 'old' ? '두 번째 방법으로 넘어가기' : '비교와 설문으로 넘어가기'}</button></>}
-          </> : <><h2>어떤 방법이 더 편했나요?</h2><p>단지지도와 공고지도를 다시 살펴보세요. 서울뿐 아니라 전국의 예시 단지도 탐색할 수 있습니다.</p><button className="study-primary" onClick={()=>next('survey')}>설문 작성하기</button></>}
+        {trial && key ? <><h2>{trial.wrongRoute ? '공고 내용은 확인했어요.' : '공고중·접수중인 단지를 찾아 모집공고 내용을 열어 보세요.'}</h2>
+          <p>{!ready ? '지도와 데이터를 준비하고 있습니다.' : trial.wrongRoute
+            ? key === 'new' ? '이번에는 공고지도 핀을 통해 열어 보세요.' : '이번에는 모집상태 필터를 적용하고, 단지지도 핀에서 모집공고를 열어 보세요.'
+            : `${METHOD_NAMES[key]} 방법을 직접 사용해 보세요. 필요하면 안내를 다시 확인할 수 있어요.`}</p>
+          <div className="study-actions"><button onClick={()=>{setCoachStep(0);setCoachDismissed(false);send({type:'help',reason:'requested'})}}>방법 보기</button></div>
+          {trial.helpAtMs !== null && <button className="study-text-button" onClick={()=>send({type:'skip'})}>계속하기 어렵다면, 이 방법 마치기</button>}
+          {trial.errors > 0 && <p className="study-muted">연결 오류가 기록되었습니다. 지도 오류 안내의 다시 시도를 이용해 주세요.</p>}
+        </> : <><h2>두 방법을 비교해 보세요.</h2><p>자유롭게 다시 둘러볼 수 있어요. 처음 체험한 기록과 직후 평가는 유지됩니다.</p>
+          <div className="study-method-recap">{state.order.map(method=><div key={method}><strong>{METHOD_NAMES[method]}</strong><p>{method === 'old' ? '모집상태 → 단지 핀 → 모집공고' : '공고지도 → 공고 요약 핀 → 모집공고'}</p></div>)}</div>
+          <button className="study-primary" onClick={()=>next('survey')}>설문 작성하기</button></>}
       </>}
     </aside>}
-    {touring && ready && <StudySpotlight key={`tour-${state.tourStep}`} tip={SERVICE_TOUR[state.tourStep]} index={state.tourStep} total={SERVICE_TOUR.length} label="서비스 소개"
+    {ratingOpen && key && <StudyRating method={key} ordinal={ordinal} skipped={trial.outcome === 'skipped'} onRate={rate} />}
+    {touring && ready && <StudySpotlight key={`tour-${state.tourStep}`} tip={SERVICE_TOUR[state.tourStep]} index={state.tourStep} total={SERVICE_TOUR.length} label="서비스 버튼 안내"
       nextLabel={state.tourStep === SERVICE_TOUR.length-1 ? '첫 번째 방법으로 넘어가기' : '다음 버튼 보기'}
       onPrevious={()=>dispatch({type:'tour-step',index:state.tourStep-1})}
-      onNext={()=>state.tourStep === SERVICE_TOUR.length-1 ? next('old-task') : dispatch({type:'tour-step',index:state.tourStep+1})} />}
+      onNext={()=>state.tourStep === SERVICE_TOUR.length-1 ? next(`${state.order[0]}-task`) : dispatch({type:'tour-step',index:state.tourStep+1})} />}
     {touring && !ready && <aside className="study-task-card" role="status">지도와 버튼을 준비하고 있습니다…</aside>}
+    {showInitialHint && ready && <StudySpotlight key={`initial-${state.step}`} tip={guidance[0]} index={0} total={1} label="시작 안내"
+      nextLabel="알겠어요, 직접 해볼게요" onPrevious={()=>{}} onNext={()=>send({type:'initial-hint-dismissed'})}
+      onClose={()=>send({type:'initial-hint-dismissed'})} closeLabel="시작 안내 닫기" onTargetActivate={()=>send({type:'initial-hint-dismissed'})} />}
     {showCoach && <StudySpotlight key={`help-${state.step}-${coachStep}`} tip={guidance[coachStep]} index={coachStep} total={guidance.length} label="방법 안내"
       nextLabel={coachStep === guidance.length-1 ? '직접 찾아보기' : '다음 안내'} onPrevious={()=>setCoachStep(i=>i-1)}
-      onNext={()=>coachStep === guidance.length-1 ? setCoachDismissed(true) : setCoachStep(i=>i+1)} onClose={()=>setCoachDismissed(true)} onTargetActivate={()=>setCoachDismissed(true)} />}
-    {state.step === 'survey' && <div className="study-modal-backdrop"><section className="study-survey" role="dialog" aria-modal="true" aria-label="체험 설문"><div className="study-survey-heading"><div><span className="study-eyebrow">04 · 마지막으로 의견을 들려주세요</span><h1>직접 써 보니 어땠나요?</h1></div><button onClick={()=>next('compare')}>지도로 돌아가기</button></div><TallySurvey summary={summary} onSubmitted={onSubmitted} /></section></div>}
+      onNext={()=>{flush();if(coachStep === guidance.length-1) setCoachDismissed(true);else setCoachStep(i=>i+1)}} onClose={()=>{flush();setCoachDismissed(true)}} onTargetActivate={()=>{flush();setCoachDismissed(true)}} />}
+    {state.step === 'survey' && <div className="study-modal-backdrop"><section className="study-survey" role="dialog" aria-modal="true" aria-label="체험 설문"><div className="study-survey-heading"><div><span className="study-eyebrow">3 / 3 · 비교·설문</span><h1>직접 써 보니 어땠나요?</h1></div><button onClick={()=>next('compare')}>지도로 돌아가기</button></div><TallySurvey summary={summary} onSubmitted={onSubmitted} /></section></div>}
     {state.step === 'complete' && <div className="study-modal-backdrop"><section className="study-intro" role="status"><span className="study-eyebrow">참여 완료</span><h1>의견을 남겨 주셔서 감사합니다.</h1><p>설문 제출을 확인했습니다. 여러분의 의견을 모아 공고를 더 쉽게 찾을 수 있는지 검토하겠습니다.</p><p className="study-muted">체험 화면은 예시 데이터이며 실제 신청에 사용할 수 없습니다.</p><button className="study-primary" onClick={()=>next('compare')}>지도 더 둘러보기</button></section></div>}
   </div>
 }
