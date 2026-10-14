@@ -182,6 +182,32 @@ it('실험 지도 모드를 바꾸면 지도 이동 없이 공고 단지 집계�
   expect(complexes.findMap).toHaveBeenCalledTimes(2)
 })
 
+it('서비스 소개에서 공고 목록을 실제로 열고 다음 소개로 가면 닫는다', async () => {
+  const repository=createRepository()
+  function Experience() {
+    const [tourStep,setTourStep]=useState(4)
+    return <><button onClick={()=>setTourStep(5)}>목록 시연 시작</button><button onClick={()=>setTourStep(6)}>다음 소개</button>
+      <PublicHousingExplorer showWelcome={false} repository={repository} mapRepository={repository}
+        study={{mode:'complexes',onModeChange:()=>{},newModeAvailable:false,announcements:{},tourStep,onEvent:()=>{}}} /></>
+  }
+  render(<MemoryRouter><Experience /></MemoryRouter>)
+  expect(screen.getByRole('button',{name:'공고 목록'})).toHaveAttribute('aria-expanded','false')
+  fireEvent.click(screen.getByRole('button',{name:'목록 시연 시작'}))
+  await screen.findByRole('button',{name:'성남 청년 행복주택 입주자 모집 공고 상세 보기'})
+  expect(screen.getByRole('button',{name:'공고 목록'})).toHaveAttribute('aria-expanded','true')
+  fireEvent.click(screen.getByRole('button',{name:'다음 소개'}))
+  expect(screen.getByRole('button',{name:'공고 목록'})).toHaveAttribute('aria-expanded','false')
+})
+
+it('공고 없는 단지의 상세를 힌트 맥락에 전달한다', async () => {
+  const repository=createRepository(),onEvent=vi.fn()
+  render(<MemoryRouter><PublicHousingExplorer showWelcome={false} repository={repository} mapRepository={repository}
+    study={{mode:'complexes',onModeChange:()=>{},newModeAvailable:false,announcements:{},onEvent}} /></MemoryRouter>)
+  fireEvent.click(screen.getByRole('button',{name:'초기 영역 알림'}))
+  fireEvent.click(await screen.findByRole('button',{name:'서울가람 행복주택 지도 마커 선택'}))
+  await waitFor(()=>expect(onEvent).toHaveBeenCalledWith(expect.objectContaining({type:'context',context:expect.objectContaining({detail:'complex-empty',complexFromFilteredPin:false})})))
+})
+
 it.each(['filter', 'pin', 'multiple', 'list'] as const)('실험 상세 요청과 실제 표시를 연결한다: %s', async (route) => {
   const repository=createRepository(), onEvent=vi.fn()
   const choice={id:'201',title:'성남 청년 행복주택 입주자 모집 공고',agency:'LH',status:'APPLYING' as const,dateLabel:'접수 마감 2026.08.30'}

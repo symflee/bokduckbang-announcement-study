@@ -54,7 +54,7 @@ describe('study measurement',()=>{
     expect(studyReducer(start(),show).trials.old.outcome).toBe('active')
   })
   it('never adds timeout help and counts only requested extra guidance',()=>{
-    let state=studyReducer(start(),{type:'initial-hint-dismissed'})
+    let state=start()
     state=studyReducer(state,{type:'tick',milliseconds:70_000})
     expect(state.trials.old).toMatchObject({helpAtMs:null,helpReason:null})
     state=studyReducer(state,{type:'help',reason:'requested'})
@@ -77,7 +77,7 @@ describe('study measurement',()=>{
     expect(restoreState(JSON.stringify(state),'data-v2')?.trials.old).toMatchObject({requestedDetail:null,interrupted:true})
     const rated=studyReducer(studyReducer(state,show),{type:'rate',value:3})
     expect(restoreState(JSON.stringify(rated),'data-v2')?.trials.old.ease).toBe(3)
-    expect(restoreState(JSON.stringify({...state,version:'announcement-map-v3'}),'data-v2')).toBeNull()
+    expect(restoreState(JSON.stringify({...state,version:'announcement-map-v4'}),'data-v2')).toBeNull()
     expect(restoreState(JSON.stringify({...state,order:['old','old']}),'data-v2')).toBeNull()
     expect(restoreState('{','data-v2')).toBeNull()
   })

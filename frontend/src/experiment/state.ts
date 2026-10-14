@@ -1,8 +1,9 @@
+import { SERVICE_TOUR } from './serviceTour'
 import type { CompletionSource, StudyDetailRequest, StudyPath } from './explorerStudy'
 
-export const EXPERIMENT_VERSION = 'announcement-map-v4'
+export const EXPERIMENT_VERSION = 'announcement-map-v5'
 export const QUESTION_VERSION = 'survey-v2'
-export type StudyStep = 'intro' | 'warmup' | 'old-task' | 'new-task' | 'compare' | 'survey' | 'complete'
+export type StudyStep = 'intro' | 'warmup' | 'explore' | 'briefing' | 'old-task' | 'new-task' | 'compare' | 'survey' | 'complete'
 const INTRODUCED_STEPS = ['old-task', 'new-task', 'compare'] as const
 export type IntroducedStep = typeof INTRODUCED_STEPS[number]
 export function hasStepIntroduction(step: StudyStep): step is IntroducedStep {
@@ -17,7 +18,6 @@ export interface TrialResult {
   elapsedMs: number
   helpAtMs: number | null
   helpReason: 'requested' | null
-  initialHintSeen: boolean
   paths: StudyPath[]
   announcementId: string | null
   requestedDetail: StudyDetailRequest | null
@@ -53,7 +53,7 @@ export interface ExperimentSummary {
   new: TrialResult
 }
 export function emptyTrial(): TrialResult {
-  return {outcome:'active', elapsedMs:0, helpAtMs:null, helpReason:null, initialHintSeen:false, paths:[], announcementId:null,
+  return {outcome:'active', elapsedMs:0, helpAtMs:null, helpReason:null,  paths:[], announcementId:null,
     requestedDetail:null, completionSource:null, wrongRoute:false, ease:null, interrupted:false, errors:0, retries:0}
 }
 export function randomMethodOrder(): MethodOrder {
@@ -76,7 +76,6 @@ export type StudyAction =
   | {type:'tour-step'; index:number}
   | {type:'tick'; milliseconds:number}
   | {type:'help'; reason:'requested'}
-  | {type:'initial-hint-dismissed'}
   | {type:'rate'; value:EaseRating}
   | {type:'path'; path:StudyPath}
   | ({type:'request-detail'} & StudyDetailRequest)
@@ -85,7 +84,7 @@ export type StudyAction =
   | {type:'submitted'; responseId:string}
 export function studyReducer(state:ExperimentState, action:StudyAction): ExperimentState {
   if (action.type === 'step') return {...state, step:action.step, stageStarted:!hasStepIntroduction(action.step)}
-  if (action.type === 'tour-step') return state.step === 'warmup' ? {...state, tourStep:Math.max(0,Math.min(5,action.index))} : state
+  if (action.type === 'tour-step') return state.step === 'warmup' ? {...state, tourStep:Math.max(0,Math.min(SERVICE_TOUR.length-1,action.index))} : state
   if (action.type === 'begin-step') return state.stageStarted ? state : {...state, stageStarted:true}
   if (action.type === 'submitted') return state.step === 'survey' ? {...state, step:'complete', responseId:action.responseId} : state
   const key = activeTrial(state)
@@ -101,9 +100,8 @@ export function studyReducer(state:ExperimentState, action:StudyAction): Experim
     case 'tick':
       if (!Number.isFinite(action.milliseconds) || action.milliseconds <= 0) return state
       next = {...trial, elapsedMs:trial.elapsedMs+action.milliseconds}; break
-    case 'initial-hint-dismissed': next = {...trial, initialHintSeen:true}; break
-    case 'help': next = trial.helpAtMs === null ? {...trial, helpAtMs:trial.elapsedMs, helpReason:'requested', initialHintSeen:true} : trial; break
-    case 'path': next = {...trial, initialHintSeen:trial.initialHintSeen || action.path === (key === 'old' ? 'filter' : 'announcement_map'), paths:[...new Set([...trial.paths, action.path])]}; break
+    case 'help': next = trial.helpAtMs === null ? {...trial, helpAtMs:trial.elapsedMs, helpReason:'requested'} : trial; break
+    case 'path': next = {...trial, paths:[...new Set([...trial.paths, action.path])]}; break
     case 'request-detail': {
       const {requestId,id,source,complexId,applicationStatuses}=action
       next = {...trial, requestedDetail:{requestId,id,source,complexId,applicationStatuses}, wrongRoute:false}; break
@@ -143,7 +141,7 @@ function validTrial(value:unknown): value is TrialResult {
     && (v.helpAtMs === null || typeof v.helpAtMs === 'number' && Number.isFinite(v.helpAtMs) && v.helpAtMs >= 0) && (v.helpReason === null || v.helpReason === 'requested')
     && Array.isArray(v.paths) && v.paths.every(p => ['filter','announcement_map','search','announcement_list','complex','recent'].includes(p))
     && validRequest(v.requestedDetail) && [null,'filtered_complex','announcement_pin'].includes(v.completionSource as never)
-    && (v.ease === null || isEaseRating(v.ease)) && typeof v.initialHintSeen === 'boolean' && typeof v.wrongRoute === 'boolean'
+    && (v.ease === null || isEaseRating(v.ease)) && typeof v.wrongRoute === 'boolean'
     && (v.announcementId === null || typeof v.announcementId === 'string') && typeof v.interrupted === 'boolean'
     && typeof v.errors === 'number' && Number.isInteger(v.errors) && v.errors >= 0 && typeof v.retries === 'number' && Number.isInteger(v.retries) && v.retries >= 0
 }
@@ -154,8 +152,8 @@ export function restoreState(source:string | null, datasetVersion:string): Exper
     const v = state as Partial<ExperimentState>
     if (v.version !== EXPERIMENT_VERSION || v.datasetVersion !== datasetVersion || typeof v.sessionId !== 'string'
       || !Array.isArray(v.order) || !['old,new','new,old'].includes(v.order.join(',')) || v.order.length !== 2
-      || !['intro','warmup','old-task','new-task','compare','survey','complete'].includes(v.step ?? '')
-      || !Number.isInteger(v.tourStep) || (v.tourStep ?? -1) < 0 || (v.tourStep ?? 6) > 5
+      || !['intro','warmup','explore','briefing','old-task','new-task','compare','survey','complete'].includes(v.step ?? '')
+      || !Number.isInteger(v.tourStep) || (v.tourStep ?? -1) < 0 || (v.tourStep ?? SERVICE_TOUR.length) >= SERVICE_TOUR.length
       || typeof v.stageStarted !== 'boolean' || typeof v.test !== 'boolean' || !v.trials || !validTrial(v.trials.old) || !validTrial(v.trials.new)
       || (v.responseId !== null && typeof v.responseId !== 'string')) return null
     const restored = v as ExperimentState

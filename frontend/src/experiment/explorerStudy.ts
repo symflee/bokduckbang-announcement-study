@@ -9,7 +9,16 @@ export interface StudyDetailRequest {
   complexId: string | null
   applicationStatuses: readonly string[]
 }
+export interface StudyHintContext {
+  statusFiltered: boolean
+  mapView: 'aggregate' | 'individual' | 'empty'
+  detail: 'none' | 'complex-active' | 'complex-empty' | 'announcement'
+  complexFromFilteredPin: boolean
+  choicesOpen: boolean
+  listOpen: boolean
+}
 export type ExplorerStudyEvent =
+  | { type: 'context'; context: StudyHintContext }
   | { type: 'ready'; ready: boolean }
   | { type: 'error'; surface: 'map' | 'data' | 'detail' }
   | { type: 'retry' }
@@ -17,6 +26,7 @@ export type ExplorerStudyEvent =
   | ({ type: 'request-detail' } & StudyDetailRequest)
   | { type: 'detail'; requestId: string; id: string; status: string | null }
 export interface ExplorerStudy {
+  tourStep?: number
   mode: MapMode
   newModeAvailable: boolean
   announcements: Record<string, StudyAnnouncement[]>

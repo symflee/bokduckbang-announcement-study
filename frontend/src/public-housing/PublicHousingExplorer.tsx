@@ -302,6 +302,14 @@ export function PublicHousingExplorer({
   const [activeResultTab, setActiveResultTab] =
     useState<ResultList>('complexes')
   const [announcementListRequested, setAnnouncementListRequested] = useState(false)
+  const tourStep = study?.tourStep
+  useEffect(() => {
+    if (tourStep === undefined) return
+    setIntegratedSearchActive(false)
+    setListPanelMode(tourStep === 5 ? 'open' : 'collapsed')
+    setActiveResultTab(tourStep === 5 ? 'announcements' : 'complexes')
+    if (tourStep === 5) setAnnouncementListRequested(true)
+  }, [tourStep])
   const [listPanelMode, setListPanelMode] = useState<'auto' | 'open' | 'collapsed'>(() => (
     (initialDetail.kind === 'complex' || initialDetail.kind === 'announcement')
       && window.matchMedia?.('(max-width: 1023px)').matches ? 'collapsed' : 'auto'
@@ -1316,6 +1324,20 @@ export function PublicHousingExplorer({
         representation: 'INDIVIDUAL',
         transitioning: clusterTransitioning,
       }
+  const hintDetail = detailLocation.kind === 'complex' && complexDetail.status === 'ready'
+    && complexDetail.complexId === detailLocation.complexId
+    ? (study?.announcements[detailLocation.complexId]?.length ? 'complex-active' : 'complex-empty')
+    : detailLocation.kind === 'announcement' ? 'announcement' : 'none'
+  const hintFiltered = Boolean(complexFilters.applicationStatuses?.some(status => status === 'BEFORE_APPLICATION' || status === 'APPLYING'))
+  const hintFromPin = hintDetail === 'complex-active' && studyComplexSelection.current?.id === complexDetail.complexId
+    && Boolean(studyComplexSelection.current.applicationStatuses.some(status => status === 'BEFORE_APPLICATION' || status === 'APPLYING'))
+  const hintMapView = aggregateMapResult !== null
+    ? aggregateMapResult.nodes.length > 0 ? 'aggregate' : 'empty'
+    : markers.length > 0 ? 'individual' : 'empty'
+  useEffect(() => {
+    studyRef.current?.onEvent({type:'context', context:{statusFiltered:hintFiltered, mapView:hintMapView,
+      detail:hintDetail, complexFromFilteredPin:hintFromPin, choicesOpen:studyChoices !== null, listOpen:showListPage || integratedSearchActive}})
+  }, [hintFiltered, hintMapView, hintDetail, hintFromPin, studyChoices, showListPage, integratedSearchActive])
   useEffect(() => {
     studyRef.current?.onEvent({type: 'ready', ready: studyMapReady && serverMapState.status === 'ready'})
     if (serverMapState.status === 'error') studyRef.current?.onEvent({type: 'error', surface: 'data'})
@@ -1608,7 +1630,7 @@ export function PublicHousingExplorer({
         onSelect={id => {setStudyChoices(null); openAnnouncementDetail(id, 'map', studyChoices)}} />}
       <main ref={mapWorkspaceRef} className="housing-map-workspace">
         <div className="housing-map-filter" hidden={streetView.active} inert={streetView.active}>
-          <ComplexFilterToolbar
+          <ComplexFilterToolbar key={tourStep ?? 'explore'}
             filters={complexFilters}
             onApply={applyComplexFilters}
             regionRepository={regionRepository}

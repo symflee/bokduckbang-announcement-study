@@ -139,3 +139,5 @@ button.study-spotlit { background:var(--ds-color-action-selected) !important; co
 .study-rating-options span { font-size:10px; line-height:1.5; word-break:keep-all; }
 .study-rating-unsure { width:100%; margin-top:14px; padding:12px; border:1px solid var(--ds-color-divider); border-radius:10px; color:var(--ds-color-label); background:var(--ds-color-surface); cursor:pointer; }
 @media(max-width:767px) { .study-rating-options { gap:5px; } .study-rating-options strong { font-size:20px; } .study-rating-options span { font-size:9px; } }
+
+.study-task-card .study-current-hint { padding:12px 14px; margin:12px 0 0; border-radius:10px; border:1px solid var(--ds-color-divider); background:var(--ds-color-action-soft); color:var(--ds-color-action); font-size:13px; line-height:1.7; }

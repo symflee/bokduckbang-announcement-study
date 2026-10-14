@@ -29,6 +29,6 @@ export function StudyStepIntroduction({step, order, onStart}: {step:IntroducedSt
       : '두 방법을 다시 둘러보고, 어떤 방식을 선호하는지와 공고지도가 필요한지 알려 주세요.'}</p>
     {method && <p className="study-method-sequence">{method === 'old' ? '모집상태 → 공고중·접수중 → 단지 선택 → 모집공고 열기' : '공고지도 → 지역 확대 → 공고 요약 핀 선택'}</p>}
     <Button size="lg" className="study-step-start" onClick={onStart}>{method ? `${ordinal} 방법 시작하기` : '두 방법 비교하기'}<span aria-hidden="true">→</span></Button>
-    {method && <p className="study-step-note">시작 안내를 확인한 뒤 직접 사용하는 시간만 기록됩니다. 필요하면 방법 보기를 눌러 주세요.</p>}
+    {method && <p className="study-step-note">직접 찾아보며 체험해 주세요. 15초 뒤부터 필요할 때 힌트를 볼 수 있어요.</p>}
   </dialog>
 }
