@@ -37,7 +37,7 @@ export function analyze(rows) {
   const seen=new Set(), valid=[], excluded={test:0,duplicate:0,invalid:0}
   for(const row of rows) {
     if(truth(row.is_test)) {excluded.test++;continue}
-    if(!row.session_id || booleanText(row.is_test)!=='false' || row.experiment_version!=='announcement-map-v1' || row.question_version!=='survey-v1' || row.dataset_version!=='national-500-v1'
+    if(!row.session_id || booleanText(row.is_test)!=='false' || row.experiment_version!=='announcement-map-v2' || row.question_version!=='survey-v1' || row.dataset_version!=='national-500-v1'
       || !['success','skipped'].includes(row.old_outcome) || !['success','skipped'].includes(row.new_outcome)
       || !['기존 방식','공고지도','차이 없음','둘 다 불편함','판단하기 어려움'].includes(row[questions.preference])
       || !['1','2','3','4','5'].includes(row[questions.need])) {excluded.invalid++;continue}

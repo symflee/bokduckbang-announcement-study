@@ -1,8 +1,13 @@
 import type { StudyPath } from './explorerStudy'
 
-export const EXPERIMENT_VERSION = 'announcement-map-v1'
+export const EXPERIMENT_VERSION = 'announcement-map-v2'
 export const QUESTION_VERSION = 'survey-v1'
 export type StudyStep = 'intro' | 'warmup' | 'old-task' | 'old-guide' | 'new-task' | 'new-guide' | 'compare' | 'survey' | 'complete'
+const INTRODUCED_STEPS = ['warmup', 'old-task', 'old-guide', 'new-task', 'new-guide', 'compare'] as const
+export type IntroducedStep = typeof INTRODUCED_STEPS[number]
+export function hasStepIntroduction(step: StudyStep): step is IntroducedStep {
+  return INTRODUCED_STEPS.some(value => value === step)
+}
 export type TrialKey = 'old' | 'new'
 export interface TrialResult {
   outcome: 'active' | 'success' | 'skipped'
@@ -21,6 +26,7 @@ export interface ExperimentState {
   datasetVersion: string
   sessionId: string
   step: StudyStep
+  stageStarted: boolean
   trials: {old: TrialResult; new: TrialResult}
   test: boolean
   responseId: string | null
@@ -40,13 +46,15 @@ export function emptyTrial(): TrialResult {
   return {outcome:'active', elapsedMs:0, helpAtMs:null, helpReason:null, paths:[], announcementId:null, requestedAnnouncementId:null, interrupted:false, errors:0, retries:0}
 }
 export function initialState(datasetVersion: string, sessionId: string, test = false): ExperimentState {
-  return {version:EXPERIMENT_VERSION, datasetVersion, sessionId, step:'intro', trials:{old:emptyTrial(), new:emptyTrial()}, test, responseId:null}
+  return {version:EXPERIMENT_VERSION, datasetVersion, sessionId, step:'intro', stageStarted:true, trials:{old:emptyTrial(), new:emptyTrial()}, test, responseId:null}
 }
 export function activeTrial(state: ExperimentState): TrialKey | null {
+  if (!state.stageStarted) return null
   return state.step === 'old-task' ? 'old' : state.step === 'new-task' ? 'new' : null
 }
 export type StudyAction =
   | {type:'step'; step:StudyStep}
+  | {type:'begin-step'}
   | {type:'tick'; milliseconds:number}
   | {type:'help'; reason: NonNullable<TrialResult['helpReason']>}
   | {type:'path'; path:StudyPath}
@@ -55,7 +63,8 @@ export type StudyAction =
   | {type:'skip'} | {type:'error'} | {type:'retry'}
   | {type:'submitted'; responseId:string}
 export function studyReducer(state:ExperimentState, action:StudyAction): ExperimentState {
-  if (action.type === 'step') return {...state, step:action.step}
+  if (action.type === 'step') return {...state, step:action.step, stageStarted:!hasStepIntroduction(action.step)}
+  if (action.type === 'begin-step') return state.stageStarted ? state : {...state, stageStarted:true}
   if (action.type === 'submitted') return state.step === 'survey' ? {...state, step:'complete', responseId:action.responseId} : state
   const key = activeTrial(state)
   if (!key) return state
@@ -104,7 +113,7 @@ export function restoreState(source:string | null, datasetVersion:string): Exper
     const v = state as Partial<ExperimentState>
     if (v.version !== EXPERIMENT_VERSION || v.datasetVersion !== datasetVersion || typeof v.sessionId !== 'string'
       || !['intro','warmup','old-task','old-guide','new-task','new-guide','compare','survey','complete'].includes(v.step ?? '')
-      || typeof v.test !== 'boolean' || !v.trials || !validTrial(v.trials.old) || !validTrial(v.trials.new)
+      || typeof v.stageStarted !== 'boolean' || typeof v.test !== 'boolean' || !v.trials || !validTrial(v.trials.old) || !validTrial(v.trials.new)
       || (v.responseId !== null && typeof v.responseId !== 'string')) return null
     const restored = v as ExperimentState
     const key = activeTrial(restored)

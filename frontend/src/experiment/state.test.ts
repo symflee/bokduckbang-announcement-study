@@ -1,9 +1,24 @@
 import { describe, expect, it } from 'vitest'
-import { initialState, restoreState, studyReducer } from './state'
+import { activeTrial, initialState, restoreState, studyReducer } from './state'
 import { parseTallyEvent, tallyUrl } from './tallyAdapter'
 import { makeSummary } from './state'
 const start = ()=>({...initialState('data-v1','session-id'),step:'old-task' as const})
 describe('study measurement',()=>{
+  it.each(['old-task', 'new-task'] as const)('waits for an explicit start in %s, including after a reload', step => {
+    const pending = studyReducer(initialState('data-v1', 'session'), {type:'step', step})
+    expect(activeTrial(pending)).toBeNull()
+    expect(studyReducer(pending, {type:'tick', milliseconds:70_000})).toEqual(pending)
+    expect(studyReducer(pending, {type:'help', reason:'requested'})).toEqual(pending)
+    const restored = restoreState(JSON.stringify(pending), 'data-v1')!
+    const key = step === 'old-task' ? 'old' : 'new'
+    expect(restored.stageStarted).toBe(false)
+    expect(restored.trials[key].interrupted).toBe(false)
+    const started = studyReducer(restored, {type:'begin-step'})
+    expect(activeTrial(started)).toBe(key)
+    expect(studyReducer(started, {type:'tick', milliseconds:2000}).trials[key].elapsedMs).toBe(2000)
+    expect(restoreState(JSON.stringify(started), 'data-v1')?.trials[key].interrupted).toBe(true)
+  })
+
   it('does not count a stale detail from the previous task as a new success',()=>{
     expect(studyReducer(start(),{type:'success',id:'1',status:'APPLYING'}).trials.old.outcome).toBe('active')
   })

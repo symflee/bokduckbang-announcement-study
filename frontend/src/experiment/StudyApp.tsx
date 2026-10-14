@@ -4,9 +4,10 @@ import { useNavigate } from 'react-router'
 import { PublicHousingExplorer } from '../public-housing/PublicHousingExplorer'
 import { announcementsByComplex, createStudyRepositories, loadStudyDataset, type MapMode, type StudyDataset } from './data'
 import type { ExplorerStudyEvent } from './explorerStudy'
-import { activeTrial, initialState, makeSummary, readState, saveState, studyReducer, type StudyAction, type StudyStep } from './state'
+import { activeTrial, hasStepIntroduction, initialState, makeSummary, readState, saveState, studyReducer, type StudyAction, type StudyStep } from './state'
 import { TallySurvey } from './TallySurvey'
 import { StudyMapBoundary } from './StudyMapBoundary'
+import { StudyStepIntroduction } from './StudyStepIntroduction'
 
 const SEOUL = '/?mapLat=37.5665&mapLng=126.978&mapZoom=11'
 export function StudyApp() {
@@ -30,17 +31,18 @@ function StudyExperience({dataset}:{dataset:StudyDataset}) {
   const [collapsed,setCollapsed] = useState(false)
   const [resume,setResume] = useState(()=>Boolean(activeTrial(state) && state.trials[activeTrial(state)!].interrupted && state.trials[activeTrial(state)!].outcome === 'active'))
   const [coachStep,setCoachStep] = useState(0)
+  const introduction = !state.stageStarted && hasStepIntroduction(state.step) ? state.step : null
   const stateRef = useRef(state)
   const readyRef = useRef(false)
   const pausedRef = useRef(resume)
   const lastTick = useRef(performance.now())
   stateRef.current = state
-  pausedRef.current = resume
+  pausedRef.current = resume || introduction !== null
   const key = activeTrial(state)
   const trial = key ? state.trials[key] : null
   const isGuide = state.step === 'old-guide' || state.step === 'new-guide'
   const newAvailable = ['new-task','new-guide','compare','survey','complete'].includes(state.step)
-  const showCoach = isGuide || (trial?.outcome === 'active' && trial.helpAtMs !== null)
+  const showCoach = (state.stageStarted && isGuide) || (trial?.outcome === 'active' && trial.helpAtMs !== null)
   const repositories = useMemo(()=>createStudyRepositories(dataset,mode),[dataset,mode])
   const announcements = useMemo(()=>announcementsByComplex(dataset.snapshot),[dataset])
   const flush = useCallback(() => {
@@ -67,11 +69,12 @@ function StudyExperience({dataset}:{dataset:StudyDataset}) {
   },[flush])
   const onEvent = useCallback((event:ExplorerStudyEvent) => {
     if (event.type === 'ready') {flush();readyRef.current=event.ready;setReady(event.ready);return}
+    if (event.type === 'error' && event.surface !== 'detail') {flush();readyRef.current=false;setReady(false)}
     if (pausedRef.current) return
     if (event.type === 'path' || event.type === 'request-detail') send(event)
     if (event.type === 'detail') send({type:'success',id:event.id,status:event.status})
     if (event.type === 'retry') send(event)
-    if (event.type === 'error') {send({type:'error'});if(event.surface !== 'detail') {readyRef.current=false;setReady(false)}}
+    if (event.type === 'error') send({type:'error'})
   },[flush,send])
   function next(step:StudyStep) {
     flush()
@@ -100,7 +103,7 @@ function StudyExperience({dataset}:{dataset:StudyDataset}) {
     return ()=>target?.classList.remove('study-highlight')
   },[showCoach,coachTarget,mode])
   return <div className="app-shell study-shell">
-    <div className="study-map" inert={['intro','survey','complete'].includes(state.step) || resume}>
+    <div className="study-map" inert={['intro','survey','complete'].includes(state.step) || resume || introduction !== null}>
       <StudyMapBoundary key={mapKey} ready={ready} onFailure={()=>onEvent({type:'error',surface:'map'})} onRetry={()=>{flushSync(()=>send({type:'retry'}));saveState(stateRef.current);window.location.reload()}}>
       <PublicHousingExplorer {...repositories} showWelcome={false} streetViewSupported={false}
         study={{mode,newModeAvailable:newAvailable,announcements,onModeChange:setMode,onEvent}} />
@@ -120,10 +123,11 @@ function StudyExperience({dataset}:{dataset:StudyDataset}) {
       <button className="study-primary" autoFocus onClick={()=>{navigate(SEOUL,{replace:true});setMapKey(k=>k+1);next('warmup')}}>안내를 확인했고, 체험할게요 <span aria-hidden="true">→</span></button>
     </section></div>}
     {resume && <div className="study-modal-backdrop"><section className="study-intro" role="dialog" aria-modal="true" aria-label="체험 이어하기"><h1>진행 중이던 체험이 있어요</h1><p>같은 참여번호로 이어갑니다. 페이지를 떠나 있던 시간은 제외하고, 이 과제는 중단 후 재개한 기록으로 구분합니다.</p><button className="study-primary" autoFocus onClick={()=>{lastTick.current=performance.now();setResume(false)}}>이어서 체험하기</button></section></div>}
-    {!['intro','survey','complete'].includes(state.step) && !resume && <aside className={`study-task-card ${collapsed ? 'is-collapsed' : ''}`} aria-label="체험 과제">
+    {introduction && <StudyStepIntroduction key={introduction} step={introduction} onStart={()=>{lastTick.current=performance.now();dispatch({type:'begin-step'})}} />}
+    {!['intro','survey','complete'].includes(state.step) && !resume && !introduction && <aside className={`study-task-card ${collapsed ? 'is-collapsed' : ''}`} aria-label="체험 과제">
       <div className="study-task-heading"><span className="study-eyebrow">{state.step === 'warmup' ? '01 · 지도 둘러보기' : state.step.startsWith('old') ? '02 · 첫 번째 방법' : state.step.startsWith('new') ? '03 · 두 번째 방법' : '04 · 비교와 설문'}</span><button onClick={()=>setCollapsed(c=>!c)} aria-expanded={!collapsed} aria-label={collapsed ? '과제 펼치기' : '과제 접기'}>{collapsed ? '＋' : '−'}</button></div>
       {!collapsed && <>
-        {state.step === 'warmup' ? <><h2>여기는 공공주택 단지 지도예요.</h2><p>지도를 움직이거나 확대하고, 단지를 하나 눌러 보세요. 지역 이름이나 단지 이름을 검색해도 됩니다.</p><button className="study-primary" disabled={!ready} onClick={()=>next('old-task')}>{ready ? '첫 번째 과제 시작' : '지도 준비 중…'}</button></>
+        {state.step === 'warmup' ? <><h2>여기는 공공주택 단지 지도예요.</h2><p>지도를 움직이거나 확대하고, 단지를 하나 눌러 보세요. 지역 이름이나 단지 이름을 검색해도 됩니다.</p><button className="study-primary" disabled={!ready} onClick={()=>next('old-task')}>{ready ? '첫 번째 방법으로 넘어가기' : '지도 준비 중…'}</button></>
           : trial ? <><h2>{trial.outcome === 'success' ? '공고 내용을 확인했어요.' : trial.outcome === 'skipped' ? '다음 단계에서 방법을 살펴볼게요.' : '공고가 올라온 단지를 찾고, 공고 내용을 확인해 주세요.'}</h2>
             {trial.outcome === 'active' ? <>
               <p>{!ready ? '지도와 데이터를 준비하는 동안 시간 측정은 멈춥니다.' : trial.helpAtMs === null ? '편한 방법으로 찾아보세요. 필요하면 언제든 도움을 받을 수 있어요.' : '아래 안내를 보면서 이어서 찾아보세요.'}</p>
@@ -133,7 +137,7 @@ function StudyExperience({dataset}:{dataset:StudyDataset}) {
             </> : <><p>{trial.outcome === 'success' ? '이제 이 방법의 사용 순서를 짧게 확인해 볼게요.' : '찾지 못한 경험도 중요한 의견입니다.'}</p><button className="study-primary" onClick={()=>next(key === 'old' ? 'old-guide' : 'new-guide')}>사용 방법 살펴보기</button></>}
           </> : isGuide ? <><h2>{oldGuide ? '필터로 진행 중인 공고 찾기' : '공고지도에서 바로 찾기'}</h2><p>아래 세 단계를 따라 직접 확인할 수 있어요.</p></> : <><h2>어떤 방법이 더 편했나요?</h2><p>단지지도와 공고지도를 다시 살펴보세요. 서울뿐 아니라 전국의 예시 단지도 탐색할 수 있습니다.</p><button className="study-primary" onClick={()=>next('survey')}>설문 작성하기</button></>}
         {showCoach && <div className="study-coach" role="note"><span>{coachStep+1} / 3</span><p>{guidance[coachStep].text}</p><div className="study-actions"><button disabled={coachStep === 0} onClick={()=>setCoachStep(i=>i-1)}>이전</button><button disabled={coachStep === 2} onClick={()=>setCoachStep(i=>i+1)}>다음 안내</button></div></div>}
-        {isGuide && <button className="study-primary" onClick={()=>next(oldGuide ? 'new-task' : 'compare')}>{oldGuide ? '두 번째 과제 시작' : '비교하고 설문 작성'}</button>}
+        {isGuide && <button className="study-primary" onClick={()=>next(oldGuide ? 'new-task' : 'compare')}>{oldGuide ? '두 번째 방법으로 넘어가기' : '비교와 설문으로 넘어가기'}</button>}
       </>}
     </aside>}
     {state.step === 'survey' && <div className="study-modal-backdrop"><section className="study-survey" role="dialog" aria-modal="true" aria-label="체험 설문"><div className="study-survey-heading"><div><span className="study-eyebrow">04 · 마지막으로 의견을 들려주세요</span><h1>직접 써 보니 어땠나요?</h1></div><button onClick={()=>next('compare')}>지도로 돌아가기</button></div><TallySurvey summary={summary} onSubmitted={onSubmitted} /></section></div>}
