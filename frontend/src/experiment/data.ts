@@ -47,7 +47,7 @@ export function announcementsByComplex(snapshot: PublicHousingSnapshotV1) {
     if (a.applicationStatus !== 'BEFORE_APPLICATION' && a.applicationStatus !== 'APPLYING') continue
     for (const id of new Set(a.supplyRows.flatMap(row => row.complex ? [String(row.complex.complexId)] : []))) {
       (result[id] ??= []).push({id: String(a.announcementId), title: a.title ?? '모집 공고', agency: a.agency?.code ?? '', status: a.applicationStatus,
-        dateLabel: `${a.applicationStatus === 'BEFORE_APPLICATION' ? '접수 시작' : '접수 마감'} ${(a.applicationStatus === 'BEFORE_APPLICATION' ? a.applicationStartAt : a.applicationEndAt)?.replaceAll('-', '.') ?? '일정 확인'}`})
+        dateLabel: `접수 ${a.applicationStartAt?.replaceAll('-', '.') ?? '시작일 미정'} ~ ${a.applicationEndAt?.replaceAll('-', '.') ?? '종료일 미정'}`})
     }
   }
   return result

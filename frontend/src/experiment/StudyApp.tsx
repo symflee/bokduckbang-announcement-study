@@ -1,6 +1,7 @@
 import { flushSync } from 'react-dom'
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
-import { useNavigate } from 'react-router'
+import { useLocation, useNavigate } from 'react-router'
+import { clearDetailQuery } from '../public-housing/navigation/detailLocation'
 import { PublicHousingExplorer } from '../public-housing/PublicHousingExplorer'
 import { announcementsByComplex, createStudyRepositories, loadStudyDataset, type MapMode, type StudyDataset } from './data'
 import type { ExplorerStudyEvent, StudyHintContext } from './explorerStudy'
@@ -12,7 +13,6 @@ import { StudyRating } from './StudyRating'
 import { StudySpotlight } from './StudySpotlight'
 import { SERVICE_TOUR } from './serviceTour'
 import { EMPTY_HINT_CONTEXT, HINT_DELAY_MS, studyHint } from './studyHints'
-import { setComplexSearchFilters } from '../public-housing/filters/searchFilterLocation'
 
 const SEOUL = '/?mapLat=37.5665&mapLng=126.978&mapZoom=11'
 export function StudyApp() {
@@ -29,6 +29,7 @@ export function StudyApp() {
 }
 function StudyExperience({dataset}:{dataset:StudyDataset}) {
   const navigate = useNavigate()
+  const {search} = useLocation()
   const [state,dispatch] = useReducer(studyReducer, dataset.datasetVersion, version => readState(version) ?? initialState(version,crypto.randomUUID(),new URLSearchParams(location.search).get('test') === '1'))
   const [mode,setMode] = useState<MapMode>('complexes')
   const [mapKey,setMapKey] = useState(0)
@@ -97,6 +98,10 @@ function StudyExperience({dataset}:{dataset:StudyDataset}) {
     if (['old-task','new-task','warmup','explore'].includes(step)) {
       readyRef.current=false;setReady(false);setMode('complexes');flushSync(()=>navigate(SEOUL,{replace:true}));setMapKey(k=>k+1)
     }
+    if (step === 'compare') {
+      // Close the mobile detail dialog before showing comparison controls behind it.
+      flushSync(()=>navigate(`/?${clearDetailQuery(new URLSearchParams(search))}`,{replace:true}))
+    }
     setCollapsed(false);setHintOpen(false);dispatch({type:'step',step})
   }
   function rate(value:EaseRating) {
@@ -107,9 +112,6 @@ function StudyExperience({dataset}:{dataset:StudyDataset}) {
   const onSubmitted = useCallback((responseId:string)=>dispatch({type:'submitted',responseId}),[])
   const summary = useMemo(()=>makeSummary(state,dataset.asOf,window.matchMedia('(max-width: 767px)').matches),[state,dataset.asOf])
   function showTourStep(index:number) {
-    const params=setComplexSearchFilters(new URLSearchParams(SEOUL.split('?')[1]),
-      index >= 3 && index <= 5 ? {applicationStatuses:['BEFORE_APPLICATION','APPLYING']} : {})
-    navigate(`/?${params}`,{replace:true})
     dispatch({type:'tour-step',index})
   }
   const hintAvailable=ready && Boolean(trial && trial.elapsedMs >= HINT_DELAY_MS)
@@ -127,20 +129,19 @@ function StudyExperience({dataset}:{dataset:StudyDataset}) {
       <img src="/logo-bok-search.svg" alt="복덕방" width="48" height="48" />
       <span className="study-eyebrow">공공주택 지도 · 복덕방</span>
       <h1 id="study-welcome-title">설문을 시작하기 전에,<br />서비스를 간단히 소개할게요.</h1>
-      <p>공공주택 단지와 모집공고를 지도에서 찾아보는 서비스예요. 주요 기능을 함께 살펴본 뒤, 잠깐 자유롭게 사용해 보세요.</p>
+      <p>공공주택 단지와 모집공고를 지도에서 찾아보는 서비스예요. 주요 기능을 함께 살펴본 뒤, 소개한 버튼들을 하나씩 눌러 보세요.</p>
       <p>준비가 되면 두 가지 방법을 체험하고 의견을 남기는 설문을 시작할 수 있어요.</p>
       <p className="study-muted">지금 보이는 단지·위치·모집조건은 임시로 넣은 체험용 데이터입니다.</p>
       <button className="study-primary" autoFocus onClick={()=>next('warmup')}>서비스 소개 보기 <span aria-hidden="true">→</span></button>
     </section></div>}
-    {state.step === 'explore' && <aside className={`study-task-card ${collapsed ? 'is-collapsed' : ''}`} aria-label="자유롭게 둘러보기">
-      <div className="study-task-heading"><span className="study-eyebrow">설문 시작 전 · 자유 탐색</span><button onClick={()=>setCollapsed(c=>!c)} aria-expanded={!collapsed} aria-label={collapsed ? '자유 탐색 안내 펼치기' : '자유 탐색 안내 접기'}>{collapsed ? '＋' : '−'}</button></div>
-      {!collapsed && <><h2>잠깐 자유롭게 사용해 보세요.</h2><p>지도를 움직이거나, 필터를 바꾸거나, 공고 목록을 열어보세요. 데이터는 임시로 넣은 예시이며 실제 모집정보가 아닙니다.</p><p>충분히 둘러봤다면 아래 버튼으로 설문을 시작해 주세요.</p><button className="study-primary" onClick={()=>next('briefing')}>준비됐어요, 설문 시작하기</button></>}
+    {state.step === 'explore' && <aside className={`study-task-card ${collapsed ? 'is-collapsed' : ''}`} aria-label="버튼 둘러보기">
+      <div className="study-task-heading"><span className="study-eyebrow">설문 시작 전 · 버튼 둘러보기</span><button onClick={()=>setCollapsed(c=>!c)} aria-expanded={!collapsed} aria-label={collapsed ? '버튼 둘러보기 안내 펼치기' : '버튼 둘러보기 안내 접기'}>{collapsed ? '＋' : '−'}</button></div>
+      {!collapsed && <><h2>버튼들을 하나씩 눌러 보세요.</h2><p>검색, 필터, 공고 목록, 최근 본 단지, 지도 확대·축소까지 눌러 보며 어떤 기능인지 확인해 보세요.</p><p>데이터는 임시로 넣은 예시입니다. 준비가 되면 아래 버튼으로 설문을 시작해 주세요.</p><button className="study-primary" onClick={()=>next('briefing')}>준비됐어요, 설문 시작하기</button></>}
     </aside>}
     {state.step === 'briefing' && <div className="study-modal-backdrop"><section className="study-intro" role="dialog" aria-modal="true" aria-labelledby="study-title">
       <span className="study-eyebrow">두 방법 비교·설문 · 약 4~6분</span>
       <h1 id="study-title">공고를 찾는 두 가지 방법,<br />직접 써 보고 알려 주세요.</h1>
-      <p>공공주택에 관심 있는 분을 위한 기능 비교입니다. 서비스 소개를 마쳤으니, 이제 두 가지 방법을 체험하고 의견을 남겨 주세요. 각 방법은 시작 전에 설명해 드려요.</p>
-      <p>아래 세 단계로 진행합니다.</p><ol><li>첫 번째 방법 체험</li><li>두 번째 방법 체험</li><li>비교·설문</li></ol>
+      <p>지금까지는 <strong>공공주택 단지가 어디에 있는지</strong> 살펴봤어요.</p><p>이제는 그중 <strong>현재 모집공고가 열려 있는 단지</strong>를 찾아볼 거예요. 두 가지 방법을 써 보고, 어떤 방법이 더 와닿는지 알려 주세요. 각 방법은 시작 전에 짧게 설명해 드릴게요.</p>
       <p className="study-muted">단지·위치·모집조건은 체험용 예시입니다. 이름과 연락처는 묻지 않습니다. 설문을 제출하면 무작위 참여번호와 함께 체험 순서·완료 여부·평가·힌트 사용·소요 시간·이용 경로가 Tally에 저장됩니다. 제출 전 이탈 기록은 수집하지 않습니다.</p>
       {!import.meta.env.VITE_TALLY_FORM_ID && <p className="study-setup-notice">사전 점검 버전: 설문 연결 전이며 응답을 수집하지 않습니다.</p>}
       <button className="study-primary" autoFocus onClick={()=>next(`${state.order[0]}-task`)}>첫 번째 방법 알아보기 <span aria-hidden="true">→</span></button>
@@ -154,12 +155,10 @@ function StudyExperience({dataset}:{dataset:StudyDataset}) {
           <p>{!ready ? '지도와 데이터를 준비하고 있습니다.' : trial.wrongRoute
             ? key === 'new' ? '이번에는 공고지도 핀을 통해 열어 보세요.' : '이번에는 모집상태 필터를 적용하고, 단지지도 핀에서 모집공고를 열어 보세요.'
             : `${METHOD_NAMES[key]} 방법을 직접 사용해 보세요. 막히면 힌트를 확인할 수 있어요.`}</p>
-          <div className="study-actions"><button disabled={!hintAvailable} aria-expanded={hintOpen} aria-controls="study-current-hint" onClick={()=>{
+          <div className="study-actions"><button className="study-hint-button" disabled={!hintAvailable} aria-expanded={hintOpen} aria-controls="study-current-hint" onClick={()=>{
             flush();if(!hintOpen) dispatch({type:'help',reason:'requested'});setHintOpen(open=>!open)
           }}>힌트 보기</button></div>
-          {!hintAvailable && ready && <p className="study-muted">먼저 직접 찾아보세요. {Math.max(1,Math.ceil((HINT_DELAY_MS-trial.elapsedMs)/1000))}초 뒤 힌트를 볼 수 있어요.</p>}
           {hintOpen && <p id="study-current-hint" className="study-current-hint" role="note" aria-label="현재 상황 힌트">{studyHint(key,mode,hintContext)}</p>}
-          {trial.helpAtMs !== null && <button className="study-text-button" onClick={()=>send({type:'skip'})}>계속하기 어렵다면, 이 방법 마치기</button>}
           {trial.errors > 0 && <p className="study-muted">연결 오류가 기록되었습니다. 지도 오류 안내의 다시 시도를 이용해 주세요.</p>}
         </> : <><h2>두 방법을 비교해 보세요.</h2><p>자유롭게 다시 둘러볼 수 있어요. 처음 체험한 기록과 직후 평가는 유지됩니다.</p>
           <div className="study-method-recap">{state.order.map(method=><div key={method}><strong>{METHOD_NAMES[method]}</strong><p>{method === 'old' ? '모집상태 → 단지 핀 → 모집공고' : '공고지도 → 공고 요약 핀 → 모집공고'}</p></div>)}</div>

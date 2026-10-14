@@ -1,7 +1,7 @@
 import { SERVICE_TOUR } from './serviceTour'
 import type { CompletionSource, StudyDetailRequest, StudyPath } from './explorerStudy'
 
-export const EXPERIMENT_VERSION = 'announcement-map-v5'
+export const EXPERIMENT_VERSION = 'announcement-map-v6'
 export const QUESTION_VERSION = 'survey-v2'
 export type StudyStep = 'intro' | 'warmup' | 'explore' | 'briefing' | 'old-task' | 'new-task' | 'compare' | 'survey' | 'complete'
 const INTRODUCED_STEPS = ['old-task', 'new-task', 'compare'] as const

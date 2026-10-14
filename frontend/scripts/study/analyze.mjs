@@ -67,7 +67,7 @@ export function analyze(rows) {
       && ratings.includes(row[`ease_${method}`]) && ['true','false'].includes(booleanText(row[`${method}_help`]))
       && (row[`${method}_outcome`]==='skipped' ? !row[`${method}_completion_source`]
         : row[`${method}_completion_source`]===(method==='old'?'filtered_complex':'announcement_pin')))
-    if(!row.session_id || booleanText(row.is_test)!=='false' || row.experiment_version!=='announcement-map-v5'
+    if(!row.session_id || booleanText(row.is_test)!=='false' || row.experiment_version!=='announcement-map-v6'
       || row.question_version!=='survey-v2' || row.dataset_version!=='national-500-v2' || !orders.includes(row.method_order)
       || !validMethods || !preferences.includes(row[questions.preference]) || !['1','2','3','4','5','판단하기 어려움'].includes(row[questions.need])) {
       excluded.invalid++;continue

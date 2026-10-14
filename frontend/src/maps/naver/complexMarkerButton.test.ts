@@ -16,6 +16,18 @@ function marker(applicationStatus: string | null = null) {
 }
 
 describe('단지 마커 상세 정보', () => {
+  it('공고 핀은 제목과 접수기간을 표시하고 복수 공고 선택을 안내한다', () => {
+    const button=createComplexMarkerButton({...marker('APPLYING'), selected:true, announcement:{
+      key:'1:17', title:'서울 행복주택 입주자 모집', agency:'SH', status:'APPLYING', count:2,
+      dateLabel:'접수 2026.10.11 ~ 2026.10.24',
+    }})
+    expect(button).toHaveClass('study-announcement-pin')
+    expect(button).toHaveTextContent('서울 행복주택 입주자 모집')
+    expect(button).toHaveTextContent('접수 2026.10.11 ~ 2026.10.24')
+    expect(button).toHaveAccessibleName(/접수 2026.10.11 ~ 2026.10.24, 진행 중 공고 2개 선택/)
+    expect(button).toHaveAttribute('aria-pressed','true')
+  })
+
   it('기존 임대 정보와 함께 단지 이름과 전용면적을 제공한다', () => {
     const button = createComplexMarkerButton(marker())
     expect(button).toHaveTextContent('서울가람 행복주택')

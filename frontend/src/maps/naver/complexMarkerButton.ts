@@ -3,6 +3,8 @@ import { MISSING_DATA_LABEL } from '../../public-housing/presentation/missingDat
 import type { NaverMapComplexMarker } from './naverMapTypes.ts'
 
 export const COMPLEX_MARKER_ANCHOR_X = 16
+export const ANNOUNCEMENT_MARKER_WIDTH = 192
+export const ANNOUNCEMENT_MARKER_HEIGHT = 110
 
 /** SDK 연결 없이도 서비스와 같은 마커 표시를 재사용한다. */
 export function createComplexMarkerButton(marker: NaverMapComplexMarker): HTMLButtonElement {
@@ -11,10 +13,13 @@ export function createComplexMarkerButton(marker: NaverMapComplexMarker): HTMLBu
   if (marker.announcement) {
     const a = marker.announcement
     button.className = 'study-announcement-pin'
+    button.style.setProperty('--announcement-width', `${ANNOUNCEMENT_MARKER_WIDTH}px`)
+    button.style.setProperty('--announcement-height', `${ANNOUNCEMENT_MARKER_HEIGHT}px`)
+    button.dataset.applicationStatus = a.status
     button.dataset.complexId = marker.id
     button.dataset.mapComplexMarker = 'true'
     button.dataset.announcementKey = a.key
-    button.setAttribute('aria-label', `${marker.name}, ${a.title}, ${a.count > 1 ? `진행 중 공고 ${a.count}개 선택` : '공고 상세 보기'}`)
+    button.setAttribute('aria-label', `${marker.name}, ${a.title}, ${a.dateLabel}, ${a.count > 1 ? `진행 중 공고 ${a.count}개 선택` : '공고 상세 보기'}`)
     button.setAttribute('aria-pressed', String(Boolean(marker.selected)))
     for (const [className, text] of [
       ['meta', `${a.agency} · ${a.status === 'APPLYING' ? '접수중' : '공고중'}${a.count > 1 ? ` · +${a.count - 1}` : ''}`],
@@ -55,7 +60,7 @@ export function createComplexMarkerButton(marker: NaverMapComplexMarker): HTMLBu
 }
 
 export function markerWidth(marker: NaverMapComplexMarker) {
-  if (marker.announcement) return 176
+  if (marker.announcement) return ANNOUNCEMENT_MARKER_WIDTH
   // Reserve room for every digit, the full unit, row label, and padding.
   // Keep the SDK overlay size in sync with the visible button.
   const amountWidths = [marker.deposit, marker.monthlyRent].map((amount) => (

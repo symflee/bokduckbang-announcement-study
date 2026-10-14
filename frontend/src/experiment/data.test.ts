@@ -54,6 +54,13 @@ describe('national study dataset',()=>{
       expect(result.nodes.every(n=>n.nextStage===stage+1)).toBe(true)
     }
   })
+  it('shows the full application period for upcoming and open announcements',()=>{
+    const linked=Object.values(announcementsByComplex(data.snapshot)).flat()
+    for(const announcement of linked) {
+      const original=data.snapshot.announcementDetails.find(a=>String(a.announcementId)===announcement.id)!
+      expect(announcement.dateLabel).toBe(`접수 ${original.applicationStartAt!.replaceAll('-', '.')} ~ ${original.applicationEndAt!.replaceAll('-', '.')}`)
+    }
+  })
   it('keeps status-filtered aggregates and pins consistent',async()=>{
     const repo=createStudyRepositories(data,'announcements').mapRepository
     const filters={applicationStatuses:['APPLYING' as const]}

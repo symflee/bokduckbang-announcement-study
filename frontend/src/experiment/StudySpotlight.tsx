@@ -55,22 +55,31 @@ export function StudySpotlight({tip,index,total,label,nextLabel,onPrevious,onNex
           selected.classList.add('study-spotlit')
           selected.addEventListener('click',activate)
           selected.setAttribute('aria-describedby',[originalDescription,'study-tip-description'].filter(Boolean).join(' '))
-          selected.scrollIntoView({block:'nearest',inline:'nearest'})
-          if (selected.matches('button,input,[tabindex]')) selected.focus({preventScroll:true})
+          if (selected.matches('button,input,[tabindex]')) {
+            selected.scrollIntoView({block:'nearest',inline:'nearest'})
+            selected.focus({preventScroll:true})
+          }
           resize.observe(selected)
         }
       }
       const width=Math.min(340,window.innerWidth-32), height=card.current?.offsetHeight ?? 240
       const bounds=selected?.getBoundingClientRect()
-      const target=bounds ? {left:Math.max(4,bounds.left-5),top:Math.max(4,bounds.top-5),width:Math.min(bounds.width+10,window.innerWidth-8),height:Math.min(bounds.height+10,window.innerHeight-8)} : null
+      const padding=selected?.matches('button,input,[tabindex]') ? 5 : 0
+      const leftEdge=Math.max(4,(bounds?.left ?? 0)-padding), topEdge=Math.max(4,(bounds?.top ?? 0)-padding)
+      const target=bounds ? {left:leftEdge,top:topEdge,width:Math.max(0,Math.min(bounds.right+padding,window.innerWidth-4)-leftEdge),height:Math.max(0,Math.min(bounds.bottom+padding,window.innerHeight-4)-topEdge)} : null
       let left=window.innerWidth-width-16, top=window.innerHeight-height-24
       if (bounds) {
         left=Math.max(16,Math.min(bounds.left,window.innerWidth-width-16))
-        if(bounds.bottom+height+24<=window.innerHeight) top=bounds.bottom+16
+        if(bounds.width>width && bounds.right+width+32<=window.innerWidth) {left=bounds.right+16;top=bounds.top}
+        else if(bounds.bottom+height+24<=window.innerHeight) top=bounds.bottom+16
         else if(bounds.top-height-16>=16) top=bounds.top-height-16
       }
       const next={frame:target,left,top:Math.max(16,top),width,maxHeight:window.innerHeight-32}
       setPlacement(previous=>JSON.stringify(previous)===JSON.stringify(next)?previous:next)
+      // Panel transforms do not notify ResizeObserver. Follow their transition too.
+      for(let element=selected;element;element=element.parentElement) {
+        if(element.getAnimations?.().some(animation=>animation.playState==='running')) {schedule();break}
+      }
     }
     function schedule() { cancelAnimationFrame(frame); frame=requestAnimationFrame(measure) }
     measure()
@@ -79,9 +88,12 @@ export function StudySpotlight({tip,index,total,label,nextLabel,onPrevious,onNex
     changes.observe(document.body,{childList:true,subtree:true})
     window.addEventListener('resize',schedule)
     document.addEventListener('scroll',schedule,true)
+    document.addEventListener('transitionrun',schedule,true)
+    document.addEventListener('transitionend',schedule,true)
     return () => {
       disposed=true;cancelAnimationFrame(frame);changes.disconnect();resize.disconnect();release()
       window.removeEventListener('resize',schedule);document.removeEventListener('scroll',schedule,true)
+      document.removeEventListener('transitionrun',schedule,true);document.removeEventListener('transitionend',schedule,true)
     }
   },[tip.target])
   return <>
