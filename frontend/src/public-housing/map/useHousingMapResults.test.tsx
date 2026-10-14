@@ -33,6 +33,16 @@ const individualResult: HousingMapIndividualResult = {
 }
 
 describe('useHousingMapResults', () => {
+  it('지도 모드가 바뀌면 같은 viewport의 이전 모드 결과를 재사용하지 않는다', async () => {
+    const repository = createRepository()
+    repository.findMap.mockResolvedValue(individualResult)
+    const {result, rerender} = renderHook(({scope})=>useHousingMapResults(repository,scope), {initialProps:{scope:'complexes'}})
+    act(()=>{result.current.request(viewport(14))})
+    await waitFor(()=>expect(result.current.state.status).toBe('ready'))
+    rerender({scope:'announcements'})
+    act(()=>{result.current.request(viewport(14))})
+    await waitFor(()=>expect(repository.findMap).toHaveBeenCalledTimes(2))
+  })
   it('최초 요청에는 직전 단계가 없고 다음 요청에는 마지막 확정 단계를 사용한다', async () => {
     const repository = createRepository()
     repository.findMap

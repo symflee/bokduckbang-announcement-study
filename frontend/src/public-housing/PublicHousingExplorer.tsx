@@ -1,3 +1,4 @@
+import type { ExplorerStudy } from '../experiment/explorerStudy'
 import { useListMeasurement } from './analytics/useListMeasurement'
 import { captureProductEvent } from '../analytics/productAnalytics'
 import { useProductDetailAnalytics } from './analytics/useProductDetailAnalytics'
@@ -155,6 +156,7 @@ interface PendingListFocus {
 }
 
 export interface PublicHousingExplorerProps {
+  study?: ExplorerStudy
   showWelcome?: boolean
   boundaryRepository?: RegionBoundaryRepository
   mapRepository: HousingMapRepository
@@ -179,6 +181,7 @@ const INITIAL_ANNOUNCEMENT_DETAIL: AnnouncementDetailState = {
 }
 
 export function PublicHousingExplorer({
+  study,
   showWelcome = true,
   boundaryRepository = regionBoundaryRepository,
   mapRepository,
@@ -187,12 +190,24 @@ export function PublicHousingExplorer({
   searchRepository,
   streetViewSupported = true,
 }: PublicHousingExplorerProps) {
+  const studyRef = useRef(study)
+  studyRef.current = study
+  const [studyMapReady, setStudyMapReady] = useState(false)
+  const [studyChoices, setStudyChoices] = useState<string | null>(null)
+  const lastStudyMapStatus = useRef('loading')
+  const studyMapAvailability = useCallback((status: 'loading' | 'ready' | 'unavailable') => {
+    if (lastStudyMapStatus.current === 'unavailable' && status === 'loading') studyRef.current?.onEvent({type:'retry'})
+    lastStudyMapStatus.current = status
+    setStudyMapReady(status === 'ready')
+    if (status === 'unavailable') studyRef.current?.onEvent({type: 'error', surface: 'map'})
+  }, [])
   const location = useLocation()
   const navigate = useNavigate()
   const navigationType = useNavigationType()
   const mobile = useMobileViewport()
   const [mapCameraTarget, setMapCameraTarget] = useState<NaverMapCameraTarget>(
     () => {
+      if (study) return {latitude:37.5665, longitude:126.978, zoom:11}
       const initialMapLocation = parseMapLocation(
         new URLSearchParams(location.search),
       )
@@ -248,7 +263,7 @@ export function PublicHousingExplorer({
     setCameraRequestId(current => current + 1)
   }, [])
   const { cancel: cancelCurrentLocation, locate: locateCurrentPosition, state: currentLocationState } =
-    useCurrentLocation(welcomeReady && autoLocationAllowed, applyCurrentLocation)
+    useCurrentLocation(!study && welcomeReady && autoLocationAllowed, applyCurrentLocation)
   const [detailCameraRevision, setDetailCameraRevision] = useState(0)
   const [selectedSearchComplex, setSelectedSearchComplex] =
     useState<SearchResultItem | null>(null)
@@ -296,7 +311,7 @@ export function PublicHousingExplorer({
     request: requestServerMap,
     retry: retryServerMap,
     state: serverMapState,
-  } = useHousingMapResults(mapRepository)
+  } = useHousingMapResults(mapRepository, study?.mode)
   const clusterTransitionRef = useRef(false)
   const transitionWaitingForIdleRef = useRef(false)
   const activeResultTabRef = useRef<ResultList>(activeResultTab)
@@ -784,6 +799,7 @@ export function PublicHousingExplorer({
   }, [announcementDetail, complexDetail, detailLocation])
 
   const openDetail = useCallback((kind: ResultTab, id: string, entryPoint: DetailEntryPoint) => {
+    if (kind === 'announcements') studyRef.current?.onEvent({type:'request-detail',id})
     cancelCurrentLocation()
     closeStreetView('TARGET_CHANGED', false)
     if (window.matchMedia?.('(max-width: 1023px)').matches) {
@@ -849,6 +865,7 @@ export function PublicHousingExplorer({
 
 
   const applyComplexFilters = useCallback((filters: ComplexSearchFilters) => {
+    studyRef.current?.onEvent({type: 'path', path: 'filter'})
     cancelCurrentLocation()
     const currentSearch = new URLSearchParams(location.search)
     const nextSearch = setComplexSearchFilters(currentSearch, filters)
@@ -903,6 +920,7 @@ export function PublicHousingExplorer({
 
   const openComplexMarker = useCallback((complexId: string) => {
     pendingDetailCameraRef.current = null
+    studyRef.current?.onEvent({type: 'path', path: 'complex'})
     captureProductEvent('map_marker_selected', { marker_type: 'complex', complex_id: complexId })
     openDetail('complexes', complexId, 'map')
   }, [openDetail])
@@ -1122,6 +1140,7 @@ export function PublicHousingExplorer({
   }, [location, navigate, closeStreetView, cancelCurrentLocation])
 
   const handleIntegratedSearchSelect = useCallback((item: SearchResultItem) => {
+    studyRef.current?.onEvent({type: 'path', path: 'search'})
     cancelCurrentLocation()
     if (item.type === 'COMPLEX') {
       trackEvent('select_search_result', { result_type: 'complex', complex_id: item.id })
@@ -1257,15 +1276,42 @@ export function PublicHousingExplorer({
         cameraRequestId,
         cameraTarget: mapCameraTarget,
         dataBusy: serverMapState.status === 'loading',
-        markers,
+        markers: study?.mode === 'announcements' ? markers.flatMap(marker => {
+          const choices = study.announcements[marker.id] ?? []
+          if (!choices[0]) return []
+          const a = choices[0]
+          return [{...marker, announcement: {...a, key: `${a.id}:${marker.id}`, count: choices.length}}]
+        }) : markers,
         onMarkerHighlight: setMarkerHighlightedComplexId,
-        onMarkerSelect: openComplexMarker,
+        onMarkerSelect: study?.mode === 'announcements' ? (id) => {
+          study.onEvent({type: 'path', path: 'announcement_map'})
+          const choices = study.announcements[id] ?? []
+          if (choices.length === 1) openAnnouncementDetail(choices[0].id, 'map')
+          else if (choices.length > 1) setStudyChoices(id)
+        } : openComplexMarker,
         onTransitionInterrupt: interruptClusterTransition,
         onUserInteraction: cancelCurrentLocation,
         onViewportChange: handleViewportChange,
         representation: 'INDIVIDUAL',
         transitioning: clusterTransitioning,
       }
+  useEffect(() => {
+    studyRef.current?.onEvent({type: 'ready', ready: studyMapReady && serverMapState.status === 'ready'})
+    if (serverMapState.status === 'error') studyRef.current?.onEvent({type: 'error', surface: 'data'})
+  }, [studyMapReady, serverMapState.status])
+  useEffect(() => {
+    function report() {
+      if (document.visibilityState === 'hidden') return
+      if (announcementDetail.status === 'ready' && announcementDetail.detail) {
+        studyRef.current?.onEvent({type: 'detail', id: announcementDetail.detail.announcementId,
+          status: announcementDetail.detail.applicationStatus})
+      }
+    }
+    report()
+    document.addEventListener('visibilitychange', report)
+    if (announcementDetail.status === 'error') studyRef.current?.onEvent({type: 'error', surface: 'detail'})
+    return () => document.removeEventListener('visibilitychange', report)
+  }, [announcementDetail])
   const hasDetail = complexDetail.status !== 'closed'
     || announcementDetail.status !== 'closed'
   const selectedAnnouncementId = detailLocation.kind === 'announcement'
@@ -1312,7 +1358,12 @@ export function PublicHousingExplorer({
       )}
       <nav className="housing-navigation" aria-label="주요 메뉴">
         <div className="housing-results__tabs">
-          {mobile && <button id="mobile-complex-list-trigger" type="button" aria-controls="complex-results-panel"
+          {study && <>
+            <button type="button" className={study.mode === 'complexes' ? 'is-active' : ''} aria-pressed={study.mode === 'complexes'} onClick={() => { collapseResults(); study.onModeChange('complexes') }}><span className="study-nav-icon" aria-hidden="true">▦</span><span>단지지도</span></button>
+            {study.newModeAvailable && <button id="study-announcement-tab" type="button" className={study.mode === 'announcements' ? 'is-active' : ''} aria-pressed={study.mode === 'announcements'} onClick={() => { collapseResults(); study.onEvent({type:'path', path:'announcement_map'}); study.onModeChange('announcements') }}><span className="study-nav-icon" aria-hidden="true">▤</span><span>공고지도</span></button>}
+          </>}
+
+          {mobile && !study && <button id="mobile-complex-list-trigger" type="button" aria-controls="complex-results-panel"
             aria-expanded={showListPage && activeResultTab === 'complexes'}
             className={activeResultTab === 'complexes' && !integratedSearchActive ? 'is-active' : undefined}
             onClick={() => {
@@ -1329,17 +1380,17 @@ export function PublicHousingExplorer({
             className={showListPage && activeResultTab === 'announcements' ? 'is-active' : undefined}
             onClick={() => {
               if (showListPage && activeResultTab === 'announcements') collapseResults()
-              else { prepareListEntry('navigation'); selectResultTab('announcements') }
+              else { studyRef.current?.onEvent({type:'path', path:'announcement_list'}); prepareListEntry('navigation'); selectResultTab('announcements') }
             }}>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true"><path d="M5 2h10l4 4v16H5ZM14 2v6h5M8 12h8M8 16h8" /></svg>
             <span aria-hidden="true">공고</span><span className="visually-hidden">공고 목록</span>
           </button>
-          {!mobile && <button id="recent-list-trigger" type="button" aria-label="최근 본 단지" aria-controls="recent-results-panel"
+          {(!mobile || study) && <button id="recent-list-trigger" type="button" aria-label="최근 본 단지" aria-controls="recent-results-panel"
             aria-expanded={showListPage && activeResultTab === 'recent'}
             className={showListPage && activeResultTab === 'recent' ? 'is-active' : undefined}
             onClick={() => {
               if (showListPage && activeResultTab === 'recent') collapseResults()
-              else { prepareListEntry('navigation'); selectResultTab('recent') }
+              else { studyRef.current?.onEvent({type:'path', path:'recent'}); prepareListEntry('navigation'); selectResultTab('recent') }
             }}>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true">
               <circle cx="12" cy="12" r="9" /><path d="M12 6v6l4 2" />
@@ -1365,7 +1416,7 @@ export function PublicHousingExplorer({
                 canRecenter={boundaryMetadata !== null || (selectedBoundarySearchItem?.latitude != null && selectedBoundarySearchItem?.longitude != null)}
                 onRecenter={() => { captureProductEvent('region_boundary_action', { operation: 'recenter' }); focusBoundary(boundaryRegionCode) }}
                 onClear={() => { captureProductEvent('region_boundary_action', { operation: 'clear' }); changeBoundarySelection(null) }}
-                onRetry={() => { captureProductEvent('exploration_retry_clicked', { surface: 'region_boundary' }); boundaryState.retry() }}
+                onRetry={() => { studyRef.current?.onEvent({type:'retry'}); captureProductEvent('exploration_retry_clicked', { surface: 'region_boundary' }); boundaryState.retry() }}
               />
             )}
           />
@@ -1400,7 +1451,7 @@ export function PublicHousingExplorer({
                     <button type="button" onClick={() => searchOverlayRef.current?.querySelector<HTMLInputElement>('input[type="search"]')?.focus()}>지역 검색하기</button>
                   </div>
                 )}
-                {boundaryRegionCode !== null && <ComplexRequestFeedback state={complexResults} onRetry={() => { captureProductEvent('exploration_retry_clicked', { surface: 'region_complex_list' }); retryComplexResults() }} />}
+                {boundaryRegionCode !== null && <ComplexRequestFeedback state={complexResults} onRetry={() => { studyRef.current?.onEvent({type:'retry'}); captureProductEvent('exploration_retry_clicked', { surface: 'region_complex_list' }); retryComplexResults() }} />}
                 {boundaryRegionCode !== null && <ComplexResultContent
                   state={complexResults}
                   selectedComplexId={selectedComplexId}
@@ -1508,7 +1559,7 @@ export function PublicHousingExplorer({
                         node,
                       )
                     }}
-                    onRetry={() => { captureProductEvent('exploration_retry_clicked', { surface: 'announcement_list' }); announcementResults.retry() }}
+                    onRetry={() => { studyRef.current?.onEvent({type:'retry'}); captureProductEvent('exploration_retry_clicked', { surface: 'announcement_list' }); announcementResults.retry() }}
                   />
                 </div>
               </div>
@@ -1529,6 +1580,14 @@ export function PublicHousingExplorer({
         </HousingResultsPanel>
       </div>
 
+      {study && studyChoices && <div className="study-choice-backdrop" onClick={() => setStudyChoices(null)}>
+        <section className="study-choices" role="dialog" aria-modal="true" aria-label="이 단지의 진행 중 공고" onClick={e => e.stopPropagation()} onKeyDown={e => { if (e.key === 'Escape') setStudyChoices(null) }}>
+          <h2>이 단지의 진행 중 공고</h2>
+          <p>확인할 공고를 선택해 주세요.</p>
+          {(study.announcements[studyChoices] ?? []).map(a => <button key={`${a.id}:${studyChoices}`} type="button" onClick={() => { setStudyChoices(null); openAnnouncementDetail(a.id, 'map') }}><small>{a.agency} · {a.status === 'APPLYING' ? '접수중' : '공고중'}</small><strong>{a.title}</strong><span>{a.dateLabel}</span></button>)}
+          <button type="button" onClick={() => setStudyChoices(null)}>닫기</button>
+        </section>
+      </div>}
       <main ref={mapWorkspaceRef} className="housing-map-workspace">
         <div className="housing-map-filter" hidden={streetView.active} inert={streetView.active}>
           <ComplexFilterToolbar
@@ -1539,10 +1598,10 @@ export function PublicHousingExplorer({
           />
         </div>
         <div className="housing-map-base" inert={streetView.active} aria-hidden={streetView.active || undefined}>
-          <NaverMap {...naverMapProps} regionBoundary={boundaryState.boundary} />
-          <CurrentLocationControl state={currentLocationState} onLocate={requestCurrentLocation} />
+          <NaverMap {...naverMapProps} onAvailabilityChange={study ? studyMapAvailability : undefined} regionBoundary={boundaryState.boundary} />
+          {!study && <CurrentLocationControl state={currentLocationState} onLocate={requestCurrentLocation} />}
           <div className="housing-map-feedback" hidden={streetView.active}><HousingMapRequestFeedback errorMessage={serverMapState.errorMessage}
-            onRetry={() => { captureProductEvent('exploration_retry_clicked', { surface: 'map_results' }); return retryServerMap() }} status={serverMapState.status} /></div>
+            onRetry={() => { studyRef.current?.onEvent({type:'retry'}); captureProductEvent('exploration_retry_clicked', { surface: 'map_results' }); return retryServerMap() }} status={serverMapState.status} /></div>
           {boundaryState.boundary !== null && !streetView.active && (
             <a className="housing-map-credits" href="/map-data-credits.html" target="_blank" rel="noreferrer">저작권</a>
           )}
@@ -1555,7 +1614,7 @@ export function PublicHousingExplorer({
           backTarget={detailReturnFocusStack.at(-1)}
           onBack={returnToDetail}
           onOpenAnnouncement={(id) => openAnnouncementDetail(id, 'detail')}
-          onRetry={() => { captureProductEvent('exploration_retry_clicked', { surface: 'detail' }); setDetailRetryRevision((current) => current + 1) }}
+          onRetry={() => { studyRef.current?.onEvent({type:'retry'}); captureProductEvent('exploration_retry_clicked', { surface: 'detail' }); setDetailRetryRevision((current) => current + 1) }}
         />
         <AnnouncementDetailLayer
           mobile={mobile}
@@ -1564,7 +1623,7 @@ export function PublicHousingExplorer({
           backTarget={detailReturnFocusStack.at(-1)}
           onBack={returnToDetail}
           onOpenComplex={(id) => openComplexDetail(id, 'detail')}
-          onRetry={() => { captureProductEvent('exploration_retry_clicked', { surface: 'detail' }); setDetailRetryRevision((current) => current + 1) }}
+          onRetry={() => { studyRef.current?.onEvent({type:'retry'}); captureProductEvent('exploration_retry_clicked', { surface: 'detail' }); setDetailRetryRevision((current) => current + 1) }}
         />
         {streetView.active && <div className="housing-street-view-layer">
           <StreetViewPanel controller={streetView} />

@@ -8,6 +8,25 @@ export const COMPLEX_MARKER_ANCHOR_X = 16
 export function createComplexMarkerButton(marker: NaverMapComplexMarker): HTMLButtonElement {
   const button = document.createElement('button')
   button.type = 'button'
+  if (marker.announcement) {
+    const a = marker.announcement
+    button.className = 'study-announcement-pin'
+    button.dataset.complexId = marker.id
+    button.dataset.mapComplexMarker = 'true'
+    button.dataset.announcementKey = a.key
+    button.setAttribute('aria-label', `${marker.name}, ${a.title}, ${a.count > 1 ? `진행 중 공고 ${a.count}개 선택` : '공고 상세 보기'}`)
+    button.setAttribute('aria-pressed', String(Boolean(marker.selected)))
+    for (const [className, text] of [
+      ['meta', `${a.agency} · ${a.status === 'APPLYING' ? '접수중' : '공고중'}${a.count > 1 ? ` · +${a.count - 1}` : ''}`],
+      ['title', a.title], ['date', a.dateLabel],
+    ]) {
+      const span = document.createElement('span')
+      span.className = `study-announcement-pin__${className}`
+      span.textContent = text
+      button.append(span)
+    }
+    return button
+  }
   button.className = markerClassName(marker)
   const width = markerWidth(marker)
   button.style.setProperty('--marker-width', `${width}px`)
@@ -36,6 +55,7 @@ export function createComplexMarkerButton(marker: NaverMapComplexMarker): HTMLBu
 }
 
 export function markerWidth(marker: NaverMapComplexMarker) {
+  if (marker.announcement) return 176
   // Reserve room for every digit, the full unit, row label, and padding.
   // Keep the SDK overlay size in sync with the visible button.
   const amountWidths = [marker.deposit, marker.monthlyRent].map((amount) => (

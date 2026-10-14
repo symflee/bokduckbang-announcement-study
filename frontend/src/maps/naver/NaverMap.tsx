@@ -147,6 +147,7 @@ function MapUnavailable({ onRetry, reason }: MapUnavailableProps) {
 }
 
 export default function NaverMap({
+  onAvailabilityChange,
   aggregateMarkers = [],
   cameraRequestId,
   cameraTarget,
@@ -209,6 +210,7 @@ export default function NaverMap({
   const [attempt, setAttempt] = useState(0)
   const [initializedAttempt, setInitializedAttempt] = useState<number | null>(null)
   const [status, setStatus] = useState<MapStatus>({ kind: 'loading' })
+  useEffect(() => { onAvailabilityChange?.(status.kind) }, [onAvailabilityChange, status.kind])
   const cameraLatitude = cameraTarget?.latitude
   const cameraLongitude = cameraTarget?.longitude
   const cameraOffsetX = cameraTarget?.screenOffset?.x

@@ -5,6 +5,14 @@ import type { RegionBoundary } from '../../public-housing/regions/regionBoundary
 
 export interface NaverMapComplexMarker extends MapMarkerPresentation {
   id: string
+  announcement?: {
+    key: string
+    title: string
+    agency: string
+    status: 'BEFORE_APPLICATION' | 'APPLYING'
+    dateLabel: string
+    count: number
+  }
   highlighted?: boolean
   latitude: number
   longitude: number
@@ -42,6 +50,7 @@ export interface NaverMapCameraTarget {
 }
 
 interface NaverMapCommonProps {
+  onAvailabilityChange?: (status: 'loading' | 'ready' | 'unavailable') => void
   cameraRequestId?: number
   cameraTarget?: NaverMapCameraTarget
   dataBusy?: boolean

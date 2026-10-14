@@ -66,7 +66,7 @@ export function createMarker({
     ? aggregateMarkerButton(marker.marker)
     : createComplexMarkerButton(marker.marker)
   const width = isAggregate ? 92 : markerWidth(marker.marker)
-  const height = isAggregate ? 52 : 58
+  const height = isAggregate ? 52 : marker.marker.announcement ? 90 : 58
   const title = isAggregate
     ? aggregateMarkerTitle(marker.marker)
     : undefined

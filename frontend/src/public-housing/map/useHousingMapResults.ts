@@ -58,6 +58,7 @@ interface RequestCandidate {
 
 export function useHousingMapResults(
   repository: HousingMapRepository,
+  cacheScope = '',
 ) {
   const [state, setState] = useState<HousingMapResultsState>(INITIAL_STATE)
   const appliedSignatureRef = useRef<string | null>(null)
@@ -142,6 +143,7 @@ export function useHousingMapResults(
       viewport,
       filters,
       resolvedStageRef.current,
+      cacheScope,
     )
     if (candidate === null) {
       return 'ignored' as const
@@ -154,7 +156,7 @@ export function useHousingMapResults(
     }
     startRequest(candidate)
     return 'started'
-  }, [startRequest])
+  }, [startRequest, cacheScope])
 
   function restoreAppliedResult(signature: string) {
     if (appliedSignatureRef.current !== signature) {
@@ -214,6 +216,7 @@ function requestCandidate(
   viewport: ViewportSnapshot,
   filters: ComplexSearchFilters,
   previousResolvedStage: HousingMapResult['resolvedStage'] | null,
+  cacheScope: string,
 ): RequestCandidate | null {
   const decision = evaluateServerMapRequest(viewport)
   if (!decision.allowed) {
@@ -221,6 +224,7 @@ function requestCandidate(
   }
   const filtersSignature = searchFiltersSignature(filters)
   const baseSignature = [
+    cacheScope,
     decision.boundsSignature,
     viewport.zoom,
     filtersSignature,

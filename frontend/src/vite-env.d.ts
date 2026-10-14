@@ -1,4 +1,5 @@
 interface ImportMetaEnv {
+  readonly VITE_TALLY_FORM_ID?: string
   readonly VITE_POSTHOG_KEY?: string
   readonly VITE_POSTHOG_HOST?: string
   readonly VITE_ANALYTICS_ENV?: string

@@ -77,6 +77,7 @@ export function renderedMarkerContentKey(marker: RenderedMarker) {
     marker.marker.latitude,
     marker.marker.longitude,
     marker.marker.name,
+    marker.marker.announcement,
     marker.marker.applicationStatus,
     marker.marker.exclusiveAreaLabel,
     marker.marker.agencyLabel,
