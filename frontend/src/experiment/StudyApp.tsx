@@ -101,7 +101,7 @@ function StudyExperience({dataset}:{dataset:StudyDataset}) {
   },[showCoach,coachTarget,mode])
   return <div className="app-shell study-shell">
     <div className="study-map" inert={['intro','survey','complete'].includes(state.step) || resume}>
-      <StudyMapBoundary key={mapKey} onFailure={()=>onEvent({type:'error',surface:'map'})} onRetry={()=>{flushSync(()=>send({type:'retry'}));saveState(stateRef.current);window.location.reload()}}>
+      <StudyMapBoundary key={mapKey} ready={ready} onFailure={()=>onEvent({type:'error',surface:'map'})} onRetry={()=>{flushSync(()=>send({type:'retry'}));saveState(stateRef.current);window.location.reload()}}>
       <PublicHousingExplorer {...repositories} showWelcome={false} streetViewSupported={false}
         study={{mode,newModeAvailable:newAvailable,announcements,onModeChange:setMode,onEvent}} />
       </StudyMapBoundary>
