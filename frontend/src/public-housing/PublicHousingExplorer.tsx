@@ -244,6 +244,14 @@ export function PublicHousingExplorer({
   const [recentComplexes, setRecentComplexes] = useState(readRecentComplexes)
   const [clusterTransitioning, setClusterTransitioning] = useState(false)
   const [cameraRequestId, setCameraRequestId] = useState(0)
+  const tourLatitude = study?.tourCamera?.latitude
+  const tourLongitude = study?.tourCamera?.longitude
+  const tourZoom = study?.tourCamera?.zoom
+  useEffect(() => {
+    if (tourLatitude === undefined || tourLongitude === undefined || tourZoom === undefined) return
+    setMapCameraTarget({latitude:tourLatitude, longitude:tourLongitude, zoom:tourZoom})
+    setCameraRequestId(current => current + 1)
+  }, [tourLatitude, tourLongitude, tourZoom])
   const welcomeVisible = showWelcome && !['required', 'failed'].includes(new URLSearchParams(location.search).get('login') ?? '')
   const [welcomeReady, setWelcomeReady] = useState(!welcomeVisible)
   const markWelcomeReady = useCallback(() => setWelcomeReady(true), [])

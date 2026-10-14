@@ -200,6 +200,29 @@ it('서비스 소개는 지정한 핀 위치로 시작한다',()=>{
   expect(screen.getByText('카메라 37.581326,126.994176')).toBeVisible()
 })
 
+it('소개 중 핀 위치로 이동한 뒤 다음 설명에서도 지도와 사용자가 옮긴 위치를 유지한다',()=>{
+  const repository=createRepository()
+  function Experience() {
+    const [tourStep,setTourStep]=useState(3)
+    const tourCamera=tourStep>=4?{latitude:37.581326,longitude:126.994176,zoom:13}:undefined
+    return <><button onClick={()=>setTourStep(step=>step+1)}>소개 다음</button>
+      <PublicHousingExplorer showWelcome={false} repository={repository} mapRepository={repository}
+        study={{mode:'complexes',onModeChange:()=>{},newModeAvailable:false,announcements:{},tourStep,tourCamera,onEvent:()=>{}}}/></>
+  }
+  render(<MemoryRouter><Experience /></MemoryRouter>)
+  const map=screen.getByRole('region',{name:'공공임대주택 지도'})
+  expect(screen.getByText('카메라 37.5665,126.978')).toBeVisible()
+  fireEvent.click(screen.getByRole('button',{name:'소개 다음'}))
+  expect(screen.getByText('카메라 37.581326,126.994176')).toBeVisible()
+  expect(screen.getByTestId('map-camera-zoom')).toHaveTextContent('13')
+  const cameraRequest=screen.getByTestId('map-camera-request').textContent
+  fireEvent.click(screen.getByRole('button',{name:'다음 영역 알림'}))
+  fireEvent.click(screen.getByRole('button',{name:'소개 다음'}))
+  expect(screen.getByRole('region',{name:'공공임대주택 지도'})).toBe(map)
+  expect(screen.getByText(`카메라 ${NEXT_CENTER.latitude},${NEXT_CENTER.longitude}`)).toBeVisible()
+  expect(screen.getByTestId('map-camera-request').textContent).toBe(cameraRequest)
+})
+
 it('서비스 소개에서 공고 목록을 실제로 열고 다음 소개로 가면 닫는다', async () => {
   const repository=createRepository()
   function Experience() {
@@ -215,6 +238,22 @@ it('서비스 소개에서 공고 목록을 실제로 열고 다음 소개로 �
   expect(screen.getByRole('button',{name:'공고 목록'})).toHaveAttribute('aria-expanded','true')
   fireEvent.click(screen.getByRole('button',{name:'다음 소개'}))
   expect(screen.getByRole('button',{name:'공고 목록'})).toHaveAttribute('aria-expanded','false')
+})
+
+it('공고 탭을 눌러 다음 소개로 넘어가도 열린 목록을 유지한다', async () => {
+  const repository=createRepository()
+  const listStep=SERVICE_TOUR.findIndex(tip=>tip.view==='list')
+  function Experience() {
+    const [tourStep,setTourStep]=useState(listStep-1)
+    return <PublicHousingExplorer showWelcome={false} repository={repository} mapRepository={repository}
+      study={{mode:'complexes',onModeChange:()=>{},newModeAvailable:false,announcements:{},tourStep,onEvent:event=>{
+        if(event.type==='context' && event.context.listOpen) setTourStep(listStep)
+      }}} />
+  }
+  render(<MemoryRouter><Experience /></MemoryRouter>)
+  fireEvent.click(screen.getByRole('button',{name:'공고 목록'}))
+  expect(await screen.findByRole('button',{name:'성남 청년 행복주택 입주자 모집 공고 상세 보기'})).toBeVisible()
+  expect(screen.getByRole('button',{name:'공고 목록'})).toHaveAttribute('aria-expanded','true')
 })
 
 it('공고 없는 단지의 상세를 힌트 맥락에 전달한다', async () => {

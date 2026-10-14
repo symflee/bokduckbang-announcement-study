@@ -26,7 +26,7 @@ vi.mock('../public-housing/PublicHousingExplorer',()=>({PublicHousingExplorer:({
     <button onClick={()=>onEvent({type:'context',context:{...EMPTY_HINT_CONTEXT,statusFiltered:true,mapView:'individual',detail:'complex-active',complexFromFilteredPin:true}})}>공고 있는 단지 열기</button><button id="study-complex-tab">단지지도</button>
     <div className="housing-search-overlay"><input type="search" aria-label="지역 검색" /></div>
     <button data-study-filter="agency">공급기관</button><button data-study-filter="all">전체 필터</button><button data-study-filter="applicationStatus">모집상태</button>
-    <button id="announcement-list-trigger" onClick={()=>detail('other')}>공고 목록</button><button id="recent-list-trigger">최근 본 단지</button>
+    <button id="announcement-list-trigger" onClick={()=>study.tourStep===undefined ? detail('other') : setTimeout(()=>onEvent({type:'context',context:{...EMPTY_HINT_CONTEXT,listOpen:true}}),0)}>공고 목록</button><button id="recent-list-trigger">최근 본 단지</button>
     <button aria-label="지도 확대">＋</button>{study.newModeAvailable && <button id="study-announcement-tab" onClick={()=>study.onModeChange('announcements')}>공고지도</button>}
     <button onClick={()=>detail('filtered_complex')}>필터 단지의 공고 열기</button><button onClick={()=>detail('announcement_pin')}>공고 핀 열기</button></div>
 }}))
@@ -50,6 +50,26 @@ function intro(name:string|RegExp){
   return dialog
 }
 describe('three-stage guided comparison',()=>{
+  it('keeps the same map mounted from welcome through next, previous, and exploration',async()=>{
+    await mount()
+    const explorer=screen.getByTestId('explorer')
+    click('서비스 소개 보기')
+    expect(screen.getByTestId('explorer')).toBe(explorer)
+    for(const [index,tip] of SERVICE_TOUR.entries()) {
+      expect(screen.getByRole('heading',{name:tip.title})).toBeInTheDocument()
+      if(index>0) {
+        click('이전')
+        expect(screen.getByTestId('explorer')).toBe(explorer)
+        click(SERVICE_TOUR[index-1].nextLabel)
+      }
+      click(tip.nextLabel)
+      expect(screen.getByTestId('explorer')).toBe(explorer)
+      expect(screen.queryByText('지도와 화면을 준비하고 있습니다…')).not.toBeInTheDocument()
+    }
+    expect(screen.getByRole('heading',{name:'버튼들을 하나씩 눌러 보세요.'})).toBeInTheDocument()
+    click('준비됐어요, 설문 시작하기')
+    expect(screen.getByTestId('explorer')).toBe(explorer)
+  })
   it.each<MethodOrder>([['old','new'],['new','old']])('runs both assigned methods with immediate ratings: %s then %s',async(first,second)=>{
     const order=[first,second] as MethodOrder
     saveState(initialState(dataset.datasetVersion,'ordered-session',false,order))
@@ -95,6 +115,24 @@ describe('three-stage guided comparison',()=>{
     expect(summary.order).toEqual(order)
     expect(summary[first]).toMatchObject({outcome:'success',elapsedMs:4000,helpAtMs:null,ease:4})
     expect(summary[second]).toMatchObject({outcome:'success',elapsedMs:3000,helpAtMs:null,ease:5})
+  })
+  it('waits for the list to open before moving its introduction forward',async()=>{
+    const tabStep=SERVICE_TOUR.findIndex(tip=>tip.target==='#announcement-list-trigger')
+    saveState({...initialState(dataset.datasetVersion,'tour-list'),step:'warmup',tourStep:tabStep})
+    await mount()
+    click('공고 목록')
+    expect(screen.getByRole('heading',{name:SERVICE_TOUR[tabStep].title})).toBeInTheDocument()
+    act(()=>vi.advanceTimersByTime(1))
+    expect(screen.getByRole('heading',{name:SERVICE_TOUR[tabStep+1].title})).toBeInTheDocument()
+  })
+  it('advances after a detail opens and ignores unchanged context when returning to its introduction',async()=>{
+    saveState({...initialState(dataset.datasetVersion,'tour-context'),step:'warmup',tourStep:5})
+    await mount()
+    click('공고 있는 단지 열기')
+    expect(screen.getByRole('heading',{name:SERVICE_TOUR[6].title})).toBeInTheDocument()
+    click('이전')
+    click('공고 있는 단지 열기')
+    expect(screen.getByRole('heading',{name:SERVICE_TOUR[5].title})).toBeInTheDocument()
   })
   it('does not complete map trials through filters or lists, and does not auto-open help at 60 seconds',async()=>{
     saveState(studyReducer(initialState(dataset.datasetVersion,'wrong-route',false,['new','old']),{type:'step',step:'new-task'}))

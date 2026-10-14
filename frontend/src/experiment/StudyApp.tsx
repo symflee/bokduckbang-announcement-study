@@ -1,7 +1,7 @@
 import { flushSync } from 'react-dom'
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router'
-import { clearDetailQuery, setComplexIdQuery, setAnnouncementIdQuery, parseAnnouncementIdQuery } from '../public-housing/navigation/detailLocation'
+import { clearDetailQuery, setComplexIdQuery, setAnnouncementIdQuery, parseDetailLocation } from '../public-housing/navigation/detailLocation'
 import { PublicHousingExplorer } from '../public-housing/PublicHousingExplorer'
 import { announcementsByComplex, createStudyRepositories, loadStudyDataset, type MapMode, type StudyDataset } from './data'
 import type { ExplorerStudyEvent, StudyHintContext } from './explorerStudy'
@@ -59,25 +59,23 @@ function StudyExperience({dataset}:{dataset:StudyDataset}) {
   const repositories = useMemo(()=>createStudyRepositories(dataset,mode),[dataset,mode])
   const announcements = useMemo(()=>announcementsByComplex(dataset.snapshot),[dataset])
   const tourComplex=dataset.snapshot.mapComplexItems.find(item=>announcements[item.complexId]?.length)
-  const tourView=SERVICE_TOUR[state.tourStep].view
-  const tourCamera=tourComplex && tourView && tourView !== 'list' ? {latitude:tourComplex.latitude,longitude:tourComplex.longitude,zoom:13} : undefined
-  // Use the same repository-backed details as normal browsing, including after refresh.
+  const pinsIntroduction=SERVICE_TOUR.findIndex(tip=>tip.view==='pins')
+  const tourCamera=tourComplex && state.tourStep>=pinsIntroduction ? {latitude:tourComplex.latitude,longitude:tourComplex.longitude,zoom:13} : undefined
+  // Keep the map mounted; only change the detail needed by the current explanation.
   useEffect(()=>{
-    if (!touring) return
+    if (!touring || !tourComplex) return
     const view=SERVICE_TOUR[state.tourStep].view
-    const complex=dataset.snapshot.mapComplexItems.find(item=>announcements[item.complexId]?.length)
-    let params=new URLSearchParams(SEOUL.split('?')[1])
-    if (complex && view && view !== 'list') {
-      params.set('mapLat',String(complex.latitude));params.set('mapLng',String(complex.longitude));params.set('mapZoom','13')
-      if(view==='complex' || view==='complex-announcement') params=setComplexIdQuery(params,String(complex.complexId))
-      if(view==='announcement' || view==='list-announcement') {
-        const selected=parseAnnouncementIdQuery(new URLSearchParams(searchRef.current))
-        params=setAnnouncementIdQuery(params,selected.kind==='valid' ? selected.announcementId : announcements[complex.complexId][0].id)
-      }
+    const currentParams=new URLSearchParams(searchRef.current)
+    const selected=parseDetailLocation(currentParams)
+    const complexId=selected.kind==='complex' && announcements[selected.complexId]?.length
+      ? selected.complexId : String(tourComplex.complexId)
+    let params=clearDetailQuery(currentParams)
+    if(view==='complex' || view==='complex-announcement') params=setComplexIdQuery(params,complexId)
+    if(view==='announcement' || view==='list-announcement') {
+      params=setAnnouncementIdQuery(params,selected.kind==='announcement' ? selected.announcementId : announcements[complexId][0].id)
     }
-    readyRef.current=false;setReady(false)
-    navigate(`/?${params}`,{replace:true});setMapKey(value=>value+1)
-  },[touring,state.tourStep,dataset,announcements,navigate])
+    if(params.toString()!==currentParams.toString()) navigate(`/?${params}`,{replace:true})
+  },[touring,state.tourStep,tourComplex,announcements,navigate])
   const flush = useCallback(() => {
     const now = performance.now()
     const elapsed = now-lastTick.current
@@ -106,11 +104,11 @@ function StudyExperience({dataset}:{dataset:StudyDataset}) {
       if(current.step==='warmup') {
         const tip=SERVICE_TOUR[current.tourStep]
         const progressed=tip.advanceOnTarget && (
-          tip.view==='pins' && event.context.detail==='complex-active'
-          || tip.view==='complex-announcement' && event.context.detail==='announcement'
-          || tip.target==='#announcement-list-trigger' && event.context.listOpen
+          tip.view==='pins' && event.context.detail==='complex-active' && hintContextRef.current.detail!=='complex-active'
+          || tip.view==='complex-announcement' && event.context.detail==='announcement' && hintContextRef.current.detail!=='announcement'
+          || tip.target==='#announcement-list-trigger' && event.context.listOpen && !hintContextRef.current.listOpen
         )
-        if(progressed || tip.view==='list' && event.context.detail==='announcement') dispatch({type:'tour-step',index:current.tourStep+1})
+        if(progressed || tip.view==='list' && event.context.detail==='announcement' && hintContextRef.current.detail!=='announcement') dispatch({type:'tour-step',index:current.tourStep+1})
       }
       if (JSON.stringify(event.context) !== JSON.stringify(hintContextRef.current)) {
         flush();setHintOpen(false);hintContextRef.current=event.context;setHintContext(event.context)
@@ -127,7 +125,7 @@ function StudyExperience({dataset}:{dataset:StudyDataset}) {
   },[flush,send])
   function next(step:StudyStep) {
     flush()
-    if (['old-task','new-task','warmup','explore'].includes(step)) {
+    if (['old-task','new-task'].includes(step)) {
       readyRef.current=false;setReady(false);setMode('complexes');flushSync(()=>navigate(SEOUL,{replace:true}));setMapKey(k=>k+1)
     }
     if (step === 'compare' || step === 'survey') {
@@ -199,7 +197,6 @@ function StudyExperience({dataset}:{dataset:StudyDataset}) {
     {ratingOpen && key && <StudyRating method={key} ordinal={ordinal} skipped={trial.outcome === 'skipped'} onRate={rate} />}
     {touring && ready && <StudySpotlight key={`tour-${state.tourStep}`} tip={SERVICE_TOUR[state.tourStep]} index={state.tourStep} total={SERVICE_TOUR.length} label="서비스 소개"
       nextLabel={SERVICE_TOUR[state.tourStep].nextLabel}
-      onTargetActivate={SERVICE_TOUR[state.tourStep].advanceOnTarget ? ()=>showTourStep(state.tourStep+1) : undefined}
       onPrevious={()=>showTourStep(state.tourStep-1)}
       onNext={()=>state.tourStep === SERVICE_TOUR.length-1 ? next('explore') : showTourStep(state.tourStep+1)} />}
     {touring && !ready && <aside className="study-task-card" role="status">지도와 화면을 준비하고 있습니다…</aside>}
