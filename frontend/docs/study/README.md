@@ -6,6 +6,7 @@
 설문: https://tally.so/r/jadN9a
 설문 편집: https://tally.so/forms/jadN9a/edit
 공식 시트 연동: https://tally.so/forms/jadN9a/integrations
+응답·분석 시트: https://docs.google.com/spreadsheets/d/1b6mfHR-HUzuPGjoN95QHATpVUqcZ6QyOnkEw8pyAXBo
 
 ## 실행과 배포
 
@@ -63,6 +64,10 @@ Supabase로 바꿀 때 자체 설문 화면과 저장 endpoint/권한 정책을 
 
 초기 검토 기준: 공고지도 선호60% 이상, 필요성4~5점60% 이상, 도움 전 성공률 기존 이상. 순서를 고정한 비교이므로 학습효과가 포함된다. 실제 사용량 증가나 인과효과의 증거로 해석하지 않는다. 제출 전 이탈자는 수집하지 않으며 참여자 모집과 파일럿 운영은 별도로 진행한다.
 
+## Google Sheets 자동 요약
+
+Tally는 `시트1`에 원본을 저장하고, `분석 요약`은 첫 500개 응답을 자동 계산한다. 원본 탭 이름과 열 순서는 유지한다. 테스트·중복·버전 불일치 응답을 제외하며, 아래 계산표 R:S열에서 선택 이유와 의견을 볼 수 있다. 500개를 넘으면 요약에 범위 확장 안내가 표시된다. 유효 응답이 없으면 비율·중앙값은 “응답 없음”으로 표시한다.
+
 ## CSV 재현 분석
 
-Tally 또는 연결된 Google Sheets의 원본 CSV를 내려받아 `npm run analyze:study -- /path/to/export.csv`로 분석할 수 있다. 응답은 외부로 전송하지 않는다. 같은 session_id의 첫 유효 응답만 사용하고, 테스트·다른 버전·불완전한 기록은 제외한다. 정상 측정 기준의 도움 전 성공률과 도움 사용률, 성공자의 소요시간 중앙값을 계산한다. 중단·오류·재시도 기록은 정상 측정에서 제외한 개수를 함께 표시한다. 표본이 없으면 0이 아닌 null을 반환한다. 원본 응답 파일은 저장소에 커밋하지 않는다.
+Tally 또는 연결된 Google Sheets의 원본 CSV를 내려받아 `npm run analyze:study -- /path/to/export.csv`로 분석할 수 있다. 응답은 외부로 전송하지 않는다. Tally의 소문자 불리언과 Google Sheets의 대문자 TRUE/FALSE 내보내기를 모두 지원한다. 같은 session_id의 첫 유효 응답만 사용하고, 테스트·다른 버전·불완전한 기록은 제외한다. 정상 측정 기준의 도움 전 성공률과 도움 사용률, 성공자의 소요시간 중앙값을 계산한다. 중단·오류·재시도 기록은 정상 측정에서 제외한 개수를 함께 표시한다. 표본이 없으면 0이 아닌 null을 반환한다. 원본 응답 파일은 저장소에 커밋하지 않는다.

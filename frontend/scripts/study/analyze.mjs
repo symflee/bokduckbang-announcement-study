@@ -29,14 +29,15 @@ export function parseCsv(csv) {
   return rows.filter(r=>r.some(Boolean)).map(r=>Object.fromEntries(headers.map((h,i)=>[h,r[i]??''])))
 }
 function number(value) {return String(value).trim()==='' ? null : Number.isFinite(Number(value)) ? Number(value) : null}
-const truth = value=>String(value).toLowerCase()==='true'
+const booleanText = value=>String(value).trim().toLowerCase()
+const truth = value=>booleanText(value)==='true'
 const ratio = (a,b)=>b ? a/b : null
 function median(values) {const v=values.toSorted((a,b)=>a-b);return v.length ? (v[Math.floor((v.length-1)/2)]+v[Math.floor(v.length/2)])/2 : null}
 export function analyze(rows) {
   const seen=new Set(), valid=[], excluded={test:0,duplicate:0,invalid:0}
   for(const row of rows) {
     if(truth(row.is_test)) {excluded.test++;continue}
-    if(!row.session_id || row.is_test!=='false' || row.experiment_version!=='announcement-map-v1' || row.question_version!=='survey-v1' || row.dataset_version!=='national-500-v1'
+    if(!row.session_id || booleanText(row.is_test)!=='false' || row.experiment_version!=='announcement-map-v1' || row.question_version!=='survey-v1' || row.dataset_version!=='national-500-v1'
       || !['success','skipped'].includes(row.old_outcome) || !['success','skipped'].includes(row.new_outcome)
       || !['기존 방식','공고지도','차이 없음','둘 다 불편함','판단하기 어려움'].includes(row[questions.preference])
       || !['1','2','3','4','5'].includes(row[questions.need])) {excluded.invalid++;continue}
@@ -47,10 +48,10 @@ export function analyze(rows) {
   const need=valid.map(r=>Number(r[questions.need]))
   const methods={}
   for(const method of ['old','new']) {
-    const normal=valid.filter(r=>r[`${method}_interrupted`]==='false' && number(r[`${method}_errors`])===0 && number(r[`${method}_retries`])===0
-      && number(r[`${method}_elapsed_ms`])!==null && number(r[`${method}_elapsed_ms`])>=0 && ['true','false'].includes(r[`${method}_help`]))
+    const normal=valid.filter(r=>booleanText(r[`${method}_interrupted`])==='false' && number(r[`${method}_errors`])===0 && number(r[`${method}_retries`])===0
+      && number(r[`${method}_elapsed_ms`])!==null && number(r[`${method}_elapsed_ms`])>=0 && ['true','false'].includes(booleanText(r[`${method}_help`])))
     const success=normal.filter(r=>r[`${method}_outcome`]==='success')
-    const unaided=success.filter(r=>r[`${method}_help`]==='false')
+    const unaided=success.filter(r=>booleanText(r[`${method}_help`])==='false')
     methods[method]={normalRecords:normal.length,interruptedOrInvalidRecords:valid.length-normal.length,
       success:success.length,unaidedSuccess:unaided.length,unaidedSuccessRate:ratio(unaided.length,normal.length),
       helpUseRate:ratio(normal.filter(r=>truth(r[`${method}_help`])).length,normal.length),

@@ -14,3 +14,9 @@ it('excludes test, duplicate, incomplete and foreign versions, preserving zero a
 it('parses quoted multiline comments and escaped quotes',()=>{
   expect(parseCsv('session_id,comment\r\na,"line1\nline2, ""quote"""\r\n')).toEqual([{session_id:'a',comment:'line1\nline2, "quote"'}])
 })
+
+it('accepts Google Sheets uppercase boolean exports without losing measurement records',()=>{
+  const sheetsRow=Object.fromEntries(Object.entries(row).map(([key,value])=>[key,['true','false'].includes(value)?value.toUpperCase():value]))
+  expect(analyze([sheetsRow])).toEqual(analyze([row]))
+  expect(analyze([{...sheetsRow,is_test:'TRUE'}]).excluded.test).toBe(1)
+})
