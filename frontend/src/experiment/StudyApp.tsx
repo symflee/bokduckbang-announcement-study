@@ -6,6 +6,7 @@ import { announcementsByComplex, createStudyRepositories, loadStudyDataset, type
 import type { ExplorerStudyEvent } from './explorerStudy'
 import { activeTrial, initialState, makeSummary, readState, saveState, studyReducer, type StudyAction, type StudyStep } from './state'
 import { TallySurvey } from './TallySurvey'
+import { StudyMapBoundary } from './StudyMapBoundary'
 
 const SEOUL = '/?mapLat=37.5665&mapLng=126.978&mapZoom=11'
 export function StudyApp() {
@@ -100,8 +101,10 @@ function StudyExperience({dataset}:{dataset:StudyDataset}) {
   },[showCoach,coachTarget,mode])
   return <div className="app-shell study-shell">
     <div className="study-map" inert={['intro','survey','complete'].includes(state.step) || resume}>
-      <PublicHousingExplorer key={mapKey} {...repositories} showWelcome={false} streetViewSupported={false}
+      <StudyMapBoundary key={mapKey} onFailure={()=>onEvent({type:'error',surface:'map'})} onRetry={()=>{flushSync(()=>send({type:'retry'}));saveState(stateRef.current);window.location.reload()}}>
+      <PublicHousingExplorer {...repositories} showWelcome={false} streetViewSupported={false}
         study={{mode,newModeAvailable:newAvailable,announcements,onModeChange:setMode,onEvent}} />
+      </StudyMapBoundary>
     </div>
     {mode === 'announcements' && <div className="study-mode-legend">숫자 = 공고가 있는 단지 수</div>}
     <div className="study-data-notice">체험용 예시 데이터 · 실제 모집정보가 아닙니다 · 기준일 {dataset.asOf}</div>

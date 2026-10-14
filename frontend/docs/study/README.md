@@ -1,5 +1,6 @@
 # 공고지도 체험 운영
 
+체험 사이트: https://bokduckbang-announcement-study.vercel.app
 개인 fork: https://github.com/toctoce/bokduckbang-announcement-study
 이슈: https://github.com/toctoce/bokduckbang-announcement-study/issues/1
 설문: https://tally.so/r/jadN9a
