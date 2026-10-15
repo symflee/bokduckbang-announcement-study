@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useRef } from 'react'
-import { activeTrial, QUESTION_VERSION, type ExperimentState } from './state'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { activeTrial, initialState, readState, saveState, QUESTION_VERSION, type ExperimentState } from './state'
+import { STUDY_DATASET_VERSION } from './data'
 import {
   captureStudyEvent, initializeStudyAnalytics, stopStudyAnalytics, updateStudyAnalyticsContext,
 } from './studyAnalytics'
@@ -11,6 +12,20 @@ function context(state:ExperimentState) {
     phase:state.step,method:activeTrial(state) ?? 'none' as const,consent:state.consent}
 }
 
+/** The page owns the SDK, including data loading failures and the welcome screen. */
+export function useStudyPageVisit() {
+  const [visit]=useState(()=>readState(STUDY_DATASET_VERSION) ?? initialState(STUDY_DATASET_VERSION,crypto.randomUUID(),new URLSearchParams(location.search).get('test')==='1'))
+  const lifecycle=useRef(0)
+  useEffect(()=>{
+    const generation=++lifecycle.current
+    saveState(visit)
+    void initializeStudyAnalytics({...context(visit),phase:'loading',method:'none'})
+    const stopIfUnmounted=()=>{if(lifecycle.current===generation) stopStudyAnalytics()}
+    return ()=>{queueMicrotask(stopIfUnmounted)}
+  },[visit])
+  return visit
+}
+
 /** State transitions are observed after commit; restored hint history is never replayed. */
 export function useStudyAnalytics(state:ExperimentState) {
   const current=useRef(state)
@@ -18,21 +33,14 @@ export function useStudyAnalytics(state:ExperimentState) {
   const previous=useRef(state)
   const phase=useRef('')
   const tour=useRef(-1)
-  const lifecycle=useRef(0)
   const started=useRef(false)
-  useEffect(()=>{
-    const generation=++lifecycle.current
-    const stopIfUnmounted=()=>{if(lifecycle.current===generation) stopStudyAnalytics()}
-    return ()=>{queueMicrotask(stopIfUnmounted)}
-  },[])
   useEffect(()=>{
     const before=previous.current
     previous.current=state
-    if(!state.consent) return
     void initializeStudyAnalytics(context(state))
-    if(!started.current) {
+    if(!started.current && state.step!=='intro') {
       started.current=true
-      captureStudyEvent('study_started',{consent_version:state.consent.version,consented_at:state.consent.acceptedAt}, {dedupeKey:'started'})
+      captureStudyEvent('study_started',{}, {dedupeKey:'started'})
     }
     if(phase.current!==state.step) {
       phase.current=state.step

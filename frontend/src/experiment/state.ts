@@ -81,6 +81,7 @@ export function isEaseRating(value:unknown): value is EaseRating {
   return value === 'unsure' || typeof value === 'number' && Number.isInteger(value) && value >= 1 && value <= 5
 }
 export type StudyAction =
+  | {type:'start-study'}
   | {type:'accept-consent'; acceptedAt:string}
   | {type:'step'; step:StudyStep}
   | {type:'begin-step'}
@@ -94,6 +95,8 @@ export type StudyAction =
   | {type:'skip'} | {type:'error'} | {type:'retry'}
   | {type:'submitted'; responseId:string}
 export function studyReducer(state:ExperimentState, action:StudyAction): ExperimentState {
+  if (action.type === 'start-study') return state.step === 'intro'
+    ? {...state, step:'warmup', stageStarted:true} : state
   if (action.type === 'accept-consent') return state.step === 'intro' && validConsentTime(action.acceptedAt)
     ? {...state, consent:{version:CONSENT_VERSION,acceptedAt:action.acceptedAt}, step:'warmup', stageStarted:true} : state
   if (action.type === 'step') return {...state, step:action.step, stageStarted:!hasStepIntroduction(action.step)}
@@ -191,13 +194,14 @@ function validTrial(value:unknown, method:TrialKey): value is TrialResult {
     && (v.announcementId === null || typeof v.announcementId === 'string') && typeof v.interrupted === 'boolean'
     && typeof v.errors === 'number' && Number.isInteger(v.errors) && v.errors >= 0 && typeof v.retries === 'number' && Number.isInteger(v.retries) && v.retries >= 0
 }
-export function restoreState(source:string | null, datasetVersion:string): ExperimentState | null {
+export function restoreState(source:string | null, datasetVersion?:string): ExperimentState | null {
   try {
     const state:unknown = JSON.parse(source ?? 'null')
     if (!state || typeof state !== 'object') return null
     const v = state as Partial<ExperimentState>
-    if (v.version !== EXPERIMENT_VERSION || v.datasetVersion !== datasetVersion || typeof v.sessionId !== 'string'
-      || !(v.step === 'intro' && v.consent === null || validConsent(v.consent))
+    if (v.version !== EXPERIMENT_VERSION || typeof v.datasetVersion !== 'string' || !v.datasetVersion.trim()
+      || datasetVersion !== undefined && v.datasetVersion !== datasetVersion || typeof v.sessionId !== 'string'
+      || !(v.consent === null || validConsent(v.consent))
       || !Array.isArray(v.order) || v.order.join(',') !== 'old,new' || v.order.length !== 2
       || !['intro','warmup','explore','briefing','old-task','new-task','compare','survey','complete'].includes(v.step ?? '')
       || !Number.isInteger(v.tourStep) || (v.tourStep ?? -1) < 0 || (v.tourStep ?? SERVICE_TOUR.length) >= SERVICE_TOUR.length
@@ -209,7 +213,7 @@ export function restoreState(source:string | null, datasetVersion:string): Exper
       ? {...restored, trials:{...restored.trials, [key]:{...restored.trials[key], requestedDetail:null, interrupted:true}}} : restored
   } catch { return null }
 }
-export function readState(datasetVersion:string) {
+export function readState(datasetVersion?:string) {
   try { return restoreState(sessionStorage.getItem(STORAGE_KEY), datasetVersion) } catch { return null }
 }
 export function makeSummary(state:ExperimentState, asOf:string, mobile:boolean): ExperimentSummary {

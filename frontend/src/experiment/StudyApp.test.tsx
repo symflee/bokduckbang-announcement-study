@@ -8,7 +8,7 @@ import { StudyApp } from './StudyApp'
 import type { ExplorerStudy } from './explorerStudy'
 import { EMPTY_HINT_CONTEXT } from './studyHints'
 import { SERVICE_TOUR } from './serviceTour'
-import { CONSENT_VERSION, initialState, readState, saveState, studyReducer, METHOD_NAMES, type ExperimentSummary } from './state'
+import { initialState, readState, saveState, studyReducer, METHOD_NAMES, type ExperimentSummary } from './state'
 vi.mock('../public-housing/PublicHousingExplorer',()=>({PublicHousingExplorer:({study}:{study:ExplorerStudy})=>{
   const {onEvent}=study
   const location=useLocation()
@@ -54,7 +54,7 @@ beforeEach(()=>{
 })
 afterEach(()=>{HTMLElement.prototype.scrollIntoView=originalScroll;vi.useRealTimers();vi.restoreAllMocks();vi.unstubAllGlobals();sessionStorage.clear()})
 async function mount(){await act(async()=>{render(<MemoryRouter><StudyApp /></MemoryRouter>)})}
-function consented(sessionId:string){return studyReducer(initialState(dataset.datasetVersion,sessionId),{type:'accept-consent',acceptedAt:'2026-10-15T00:00:00.000Z'})}
+function started(sessionId:string){return studyReducer(initialState(dataset.datasetVersion,sessionId),{type:'start-study'})}
 function click(name:string|RegExp){fireEvent.click(screen.getByRole('button',{name}))}
 function intro(name:string|RegExp){
   const dialog=screen.getByRole('dialog',{name})
@@ -63,24 +63,25 @@ function intro(name:string|RegExp){
   return dialog
 }
 describe('three-stage guided comparison',()=>{
-  it('keeps the study unstarted after declining and accepts consent only after returning to the notice',async()=>{
+  it('explains visit collection, keeps declining on the introduction and starts without recording consent',async()=>{
     await mount()
     const welcome=screen.getByRole('dialog',{name:/설문을 시작하기 전에/})
     expect(within(welcome).getByRole('heading')).toHaveFocus()
-    expect(welcome).toHaveTextContent('설문을 제출하지 않고 나간 경우에도 동의 후 체험 기록은 남습니다')
+    expect(welcome).toHaveTextContent('이 페이지에 접속한 시점부터')
+    expect(welcome).toHaveTextContent('체험을 시작하거나 설문을 제출하지 않고 나간 경우에도 수집된 기록은 남습니다')
     expect(welcome).toHaveTextContent('사용자를 식별할 수 없도록 처리한 실험 기록은 제품 개선과 실험 결과 정리를 위해 보관')
     expect(readState(dataset.datasetVersion)).toMatchObject({step:'intro',consent:null})
     click('참여하지 않기')
     const declined=screen.getByRole('dialog',{name:'참여하지 않으셔도 괜찮아요.'})
-    expect(declined).toHaveTextContent('체험 기록과 화면 녹화를 시작하지 않았습니다')
+    expect(declined).toHaveTextContent('이 탭을 닫으면 참여를 종료할 수 있습니다')
+    expect(declined).toHaveTextContent('페이지에 접속한 뒤 수집된 방문·화면 조작 기록은 남습니다')
     expect(readState(dataset.datasetVersion)).toMatchObject({step:'intro',consent:null})
     act(()=>vi.advanceTimersByTime(60000))
-    click('안내로 돌아가기');click('동의하고 시작할게요')
-    expect(readState(dataset.datasetVersion)).toMatchObject({step:'warmup',consent:{version:CONSENT_VERSION},trials:{old:{elapsedMs:0},new:{elapsedMs:0}}})
-    expect(readState(dataset.datasetVersion)?.consent?.acceptedAt).toBe(new Date().toISOString())
+    click('안내로 돌아가기');click('시작할게요')
+    expect(readState(dataset.datasetVersion)).toMatchObject({step:'warmup',consent:null,trials:{old:{elapsedMs:0},new:{elapsedMs:0}}})
   })
   it('lets participants close the centered start prompt, explore and open it again',async()=>{
-    saveState({...consented('explore-prompt'),step:'explore'})
+    saveState({...started('explore-prompt'),step:'explore'})
     await mount()
     const map=screen.getByTestId('explorer').closest('.study-map')
     let prompt=screen.getByRole('dialog',{name:'이제 두 방법을 체험해 볼까요?'})
@@ -102,7 +103,7 @@ describe('three-stage guided comparison',()=>{
   it('keeps the same map mounted from welcome through next, previous, and exploration',async()=>{
     await mount()
     const explorer=screen.getByTestId('explorer')
-    click('동의하고 시작할게요')
+    click('시작할게요')
     expect(screen.getByTestId('explorer')).toBe(explorer)
     for(const [index,tip] of SERVICE_TOUR.entries()) {
       expect(screen.getByRole('heading',{name:tip.title})).toBeInTheDocument()
@@ -125,7 +126,7 @@ describe('three-stage guided comparison',()=>{
   it('runs filters first, then the announcement map with immediate ratings',async()=>{
     const first='old',second='new',order=['old','new'] as const
     saveState(initialState(dataset.datasetVersion,'ordered-session'))
-    await mount();screen.getByRole('heading',{name:/설문을 시작하기 전에/});click('동의하고 시작할게요')
+    await mount();screen.getByRole('heading',{name:/설문을 시작하기 전에/});click('시작할게요')
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     for(const tip of SERVICE_TOUR) {
       expect(screen.getByRole('heading',{name:tip.title})).toBeInTheDocument()
@@ -177,7 +178,7 @@ describe('three-stage guided comparison',()=>{
   })
   it('waits for the list to open before moving its introduction forward',async()=>{
     const tabStep=SERVICE_TOUR.findIndex(tip=>tip.target==='#announcement-list-trigger')
-    saveState({...consented('tour-list'),step:'warmup',tourStep:tabStep})
+    saveState({...started('tour-list'),step:'warmup',tourStep:tabStep})
     await mount()
     click('공고 목록')
     expect(screen.getByRole('heading',{name:SERVICE_TOUR[tabStep].title})).toBeInTheDocument()
@@ -185,7 +186,7 @@ describe('three-stage guided comparison',()=>{
     expect(screen.getByRole('heading',{name:SERVICE_TOUR[tabStep+1].title})).toBeInTheDocument()
   })
   it('does not advance the announcement-list introduction when a different list opens',async()=>{
-    saveState({...consented('tour-other-list'),tourStep:7})
+    saveState({...started('tour-other-list'),tourStep:7})
     await mount()
     click('최근 본 단지')
     expect(screen.getByRole('heading',{name:SERVICE_TOUR[7].title})).toBeInTheDocument()
@@ -194,13 +195,13 @@ describe('three-stage guided comparison',()=>{
     expect(screen.getByRole('heading',{name:SERVICE_TOUR[8].title})).toBeInTheDocument()
   })
   it.each([[4,3],[5,3],[6,5],[9,8]])('keeps the guide connected after closing the detail in step %i',async(from,to)=>{
-    saveState({...consented('tour-close'),tourStep:from})
+    saveState({...started('tour-close'),tourStep:from})
     await mount()
     click('상세 닫기')
     expect(screen.getByRole('heading',{name:SERVICE_TOUR[to].title})).toBeInTheDocument()
   })
   it('keeps the selected complex when returning from its announcement and follows detail links',async()=>{
-    saveState({...consented('tour-selection'),tourStep:4})
+    saveState({...started('tour-selection'),tourStep:4})
     await mount()
     click('다른 단지 상세 열기')
     click('모집공고 살펴보기')
@@ -213,14 +214,14 @@ describe('three-stage guided comparison',()=>{
     expect(screen.getByRole('heading',{name:SERVICE_TOUR[4].title})).toBeInTheDocument()
   })
   it.each([4,5,6,9])('restores step %i on reload under StrictMode without treating initial navigation as a close',async index=>{
-    saveState({...consented('tour-reload'),tourStep:index})
+    saveState({...started('tour-reload'),tourStep:index})
     await act(async()=>{render(<StrictMode><MemoryRouter><StudyApp /></MemoryRouter></StrictMode>)})
     expect(screen.getByRole('heading',{name:SERVICE_TOUR[index].title})).toBeInTheDocument()
     expect(readState(dataset.datasetVersion)?.tourStep).toBe(index)
   })
   it('advances after a detail opens and ignores unchanged context when returning to its introduction',async()=>{
     const pinStep=SERVICE_TOUR.findIndex(tip=>tip.view==='pins' && tip.advanceOnTarget)
-    saveState({...consented('tour-context'),step:'warmup',tourStep:pinStep})
+    saveState({...started('tour-context'),step:'warmup',tourStep:pinStep})
     await mount()
     click('공고 있는 단지 열기')
     expect(screen.getByRole('heading',{name:SERVICE_TOUR[pinStep+1].title})).toBeInTheDocument()
@@ -229,7 +230,7 @@ describe('three-stage guided comparison',()=>{
     expect(screen.getByRole('heading',{name:SERVICE_TOUR[pinStep].title})).toBeInTheDocument()
   })
   it('does not complete map trials through filters or lists, and does not auto-open help at 60 seconds',async()=>{
-    saveState(studyReducer(consented('wrong-route'),{type:'step',step:'new-task'}))
+    saveState(studyReducer(started('wrong-route'),{type:'step',step:'new-task'}))
     await mount();screen.getByRole('button',{name:'두 번째 방법 시작하기'});click('두 번째 방법 시작하기');click('공고지도')
     act(()=>vi.advanceTimersByTime(70_000))
     expect(screen.queryByRole('note',{name:'현재 상황 힌트'})).not.toBeInTheDocument()
@@ -241,7 +242,7 @@ describe('three-stage guided comparison',()=>{
     click('공고 핀 열기');expect(screen.getByRole('dialog',{name:'공고 내용을 확인했어요.'})).toBeInTheDocument()
   })
   it('enables one hint button without countdown or skip and continues through completion',async()=>{
-    saveState(studyReducer(consented('help'),{type:'step',step:'old-task'}))
+    saveState(studyReducer(started('help'),{type:'step',step:'old-task'}))
     await mount();screen.getByRole('button',{name:'첫 번째 방법 시작하기'});click('첫 번째 방법 시작하기');click('모집상태')
     act(()=>vi.advanceTimersByTime(14_750))
     expect(screen.getByRole('button',{name:'힌트 보기'})).toBeDisabled()
@@ -260,7 +261,7 @@ describe('three-stage guided comparison',()=>{
     expect(readState(dataset.datasetVersion)?.trials.old).toMatchObject({outcome:'success',ease:'unsure'})
   })
   it('excludes background time and fractional guidance intervals from active measurement',async()=>{
-    saveState(studyReducer(consented('background'),{type:'step',step:'old-task'}))
+    saveState(studyReducer(started('background'),{type:'step',step:'old-task'}))
     await mount();click('첫 번째 방법 시작하기')
     act(()=>vi.advanceTimersByTime(15_125));click('힌트 보기')
     act(()=>vi.advanceTimersByTime(60625));click('힌트 보기')
@@ -272,13 +273,13 @@ describe('three-stage guided comparison',()=>{
     expect(readState(dataset.datasetVersion)?.trials.old).toMatchObject({outcome:'success',elapsedMs:17125,helpAtMs:15125})
   })
   it('restores the service tour outside the three trial stages',async()=>{
-    saveState({...consented('tour'),step:'warmup',tourStep:SERVICE_TOUR.findIndex(tip=>tip.view==='list')})
+    saveState({...started('tour'),step:'warmup',tourStep:SERVICE_TOUR.findIndex(tip=>tip.view==='list')})
     await mount();screen.getByRole('heading',{name:'목록에서 공고를 골라요'})
     expect(screen.getByRole('region',{name:'공고 목록 시연'})).toHaveClass('study-spotlit')
     expect(readState(dataset.datasetVersion)?.trials.old.interrupted).toBe(false)
   })
   it.each(['complex','announcement','list-announcement'] as const)('restores the actual %s preview without counting a trial',async view=>{
-    saveState({...consented('tour-detail'),step:'warmup',tourStep:SERVICE_TOUR.findIndex(tip=>tip.view===view)})
+    saveState({...started('tour-detail'),step:'warmup',tourStep:SERVICE_TOUR.findIndex(tip=>tip.view===view)})
     await mount()
     expect(screen.getByRole('status',{name:'지도 조건'})).toHaveTextContent(view==='complex'?'complexId=10001':'announcementId=20001')
     expect(readState(dataset.datasetVersion)?.trials.old.elapsedMs).toBe(0)
@@ -286,7 +287,7 @@ describe('three-stage guided comparison',()=>{
     expect(readState(dataset.datasetVersion)?.tourStep).toBe(SERVICE_TOUR.findIndex(tip=>tip.view===view)-1)
   })
   it('offers only a relevant hint and dismisses it when the map situation changes',async()=>{
-    saveState(studyReducer(consented('context'),{type:'step',step:'old-task'}))
+    saveState(studyReducer(started('context'),{type:'step',step:'old-task'}))
     await mount();click('첫 번째 방법 시작하기');act(()=>vi.advanceTimersByTime(15000))
     click('힌트 보기');click('공고 없는 단지 열기')
     expect(screen.queryByRole('note')).not.toBeInTheDocument()
@@ -307,7 +308,7 @@ describe('three-stage guided comparison',()=>{
     expect(readState(dataset.datasetVersion)?.trials.new.hintOpens).toHaveLength(0)
   })
   it('resumes the timer when map interaction dismisses an open hint',async()=>{
-    saveState(studyReducer(consented('interaction'),{type:'step',step:'old-task'}))
+    saveState(studyReducer(started('interaction'),{type:'step',step:'old-task'}))
     await mount();click('첫 번째 방법 시작하기');act(()=>vi.advanceTimersByTime(15000));click('힌트 보기')
     act(()=>vi.advanceTimersByTime(5125));fireEvent.pointerDown(screen.getByTestId('explorer'))
     expect(screen.queryByRole('note',{name:'현재 상황 힌트'})).not.toBeInTheDocument()
@@ -315,13 +316,13 @@ describe('three-stage guided comparison',()=>{
     expect(readState(dataset.datasetVersion)?.trials.old).toMatchObject({elapsedMs:17000,helpAtMs:15000})
   })
   it.each(['explore','briefing'] as const)('restores %s without starting or timing a method',async step=>{
-    saveState({...consented('before-study'),step})
+    saveState({...started('before-study'),step})
     await mount();act(()=>vi.advanceTimersByTime(60000))
     expect(readState(dataset.datasetVersion)?.step).toBe(step)
     expect(readState(dataset.datasetVersion)?.trials.old.elapsedMs).toBe(0)
   })
   it('restores pending immediate ratings without restarting the trial',async()=>{
-    const state=consented('rating')
+    const state=started('rating')
     saveState({...state,step:'old-task',trials:{...state.trials,old:{...state.trials.old,outcome:'skipped'}}})
     await mount();screen.getByRole('button',{name:'판단하기 어려워요'});click('판단하기 어려워요');intro(/필터로 찾기|공고지도로 찾기/)
     expect(readState(dataset.datasetVersion)?.order).toEqual(['old','new'])

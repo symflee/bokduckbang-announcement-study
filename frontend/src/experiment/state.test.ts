@@ -1,27 +1,48 @@
 import { describe, expect, it } from 'vitest'
-import { CONSENT_VERSION, activeTrial, initialState, makeSummary, restoreState, studyReducer, type ExperimentState, type TrialKey } from './state'
+import { CONSENT_VERSION, activeTrial, initialState, makeSummary, readState, restoreState, saveState, studyReducer, type ExperimentState, type TrialKey } from './state'
 import { parseTallyEvent, tallyUrl } from './tallyAdapter'
 import type { StudyDetailRequest } from './explorerStudy'
 import { EMPTY_HINT_CONTEXT, selectStudyHint } from './studyHints'
-const consented=()=>studyReducer(initialState('data-v2','session'),{type:'accept-consent',acceptedAt:'2026-10-15T00:00:00.000Z'})
-const start=(key:TrialKey='old'):ExperimentState=>({...consented(),step:`${key}-task`})
+const started=()=>studyReducer(initialState('data-v2','session'),{type:'start-study'})
+const start=(key:TrialKey='old'):ExperimentState=>({...started(),step:`${key}-task`})
 const help={type:'help' as const,reason:'requested' as const,mode:'complexes' as const,context:EMPTY_HINT_CONTEXT,hintCode:selectStudyHint('old','complexes',EMPTY_HINT_CONTEXT).code}
 const request: StudyDetailRequest={requestId:'request-1',id:'1',source:'filtered_complex',complexId:'10001',applicationStatuses:['BEFORE_APPLICATION','APPLYING']}
 const show={type:'success' as const, requestId:request.requestId,id:'1',status:'APPLYING'}
 const open=(state:ExperimentState, origin:Partial<StudyDetailRequest>={})=>studyReducer(state,{type:'request-detail',...request,...origin})
 describe('study measurement',()=>{
-  it('starts collection only with a versioned consent and restores that consent',()=>{
+  it('starts the introduction without recording consent and restores progress without consent',()=>{
+    const initial=initialState('data-v2','session')
+    const begun=studyReducer(initial,{type:'start-study'})
+    expect(begun).toMatchObject({step:'warmup',stageStarted:true,consent:null})
+    expect(studyReducer(begun,{type:'start-study'})).toBe(begun)
+    for (const step of ['intro','warmup','explore','briefing','old-task','new-task','compare','survey','complete'] as const) {
+      expect(restoreState(JSON.stringify({...begun,step}),'data-v2')).toMatchObject({step,consent:null})
+    }
+  })
+  it('preserves valid earlier consent records and rejects malformed records',()=>{
     const initial=initialState('data-v2','session')
     expect(initial.consent).toBeNull()
     expect(studyReducer(initial,{type:'accept-consent',acceptedAt:'not-a-date'})).toBe(initial)
-    const accepted=consented()
+    const accepted=studyReducer(initial,{type:'accept-consent',acceptedAt:'2026-10-15T00:00:00.000Z'})
     expect(accepted).toMatchObject({step:'warmup',consent:{version:CONSENT_VERSION,acceptedAt:'2026-10-15T00:00:00.000Z'}})
     expect(restoreState(JSON.stringify(accepted),'data-v2')?.consent).toEqual(accepted.consent)
-    expect(restoreState(JSON.stringify({...accepted,consent:null}),'data-v2')).toBeNull()
+    expect(restoreState(JSON.stringify({...accepted,consent:undefined}),'data-v2')).toBeNull()
     expect(restoreState(JSON.stringify({...accepted,consent:{...accepted.consent,version:'previous'}}),'data-v2')).toBeNull()
     expect(restoreState(JSON.stringify({...accepted,consent:{...accepted.consent,acceptedAt:'2026-02-30T00:00:00.000Z'}}),'data-v2')).toBeNull()
     expect(restoreState(JSON.stringify(initial),'data-v2')?.consent).toBeNull()
     expect(studyReducer(accepted,{type:'accept-consent',acceptedAt:'2026-10-16T00:00:00.000Z'})).toBe(accepted)
+  })
+  it('reads the saved identity before the dataset loads while still rejecting a mismatched known dataset',()=>{
+    const state=started()
+    saveState(state)
+    try {
+      expect(readState()).toMatchObject({sessionId:state.sessionId,datasetVersion:'data-v2',consent:null})
+      expect(readState('data-v2')).toMatchObject({sessionId:state.sessionId})
+      expect(readState('different-data')).toBeNull()
+      for (const datasetVersion of ['', '   ', undefined, 42]) {
+        expect(restoreState(JSON.stringify({...state,datasetVersion}))).toBeNull()
+      }
+    } finally { sessionStorage.clear() }
   })
   it('restores hint history, snapshots context and rejects inconsistent records',()=>{
     const context={...EMPTY_HINT_CONTEXT}
@@ -41,7 +62,7 @@ describe('study measurement',()=>{
     expect(studyReducer(completed,help)).toBe(completed)
   })
   it.each(['old-task','new-task'] as const)('does not measure the start modal for %s',step=>{
-    const pending=studyReducer(consented(),{type:'step',step})
+    const pending=studyReducer(started(),{type:'step',step})
     expect(activeTrial(pending)).toBeNull()
     expect(studyReducer(pending,{type:'tick',milliseconds:70_000})).toEqual(pending)
     const restored=restoreState(JSON.stringify(pending),'data-v2')!

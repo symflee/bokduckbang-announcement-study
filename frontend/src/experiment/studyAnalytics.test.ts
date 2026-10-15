@@ -41,15 +41,17 @@ afterEach(async () => {
   vi.restoreAllMocks()
 })
 
-it('does not load or initialize the SDK without current consent, and drops pre-consent clicks', async () => {
+it('starts page events and replay on a visit without inventing consent', async () => {
   const analytics = await import('./studyAnalytics')
   expect(analytics.captureStudyEvent('study_control_clicked', { control: 'search_submit' })).toBe(false)
   await analytics.initializeStudyAnalytics(context({ consent: null }))
-  expect(constructor).not.toHaveBeenCalled()
-  expect(sdk.init).not.toHaveBeenCalled()
-  expect(analytics.getStudyAnalyticsStatus().status).toBe('consent-required')
-  await analytics.initializeStudyAnalytics(context())
-  expect(sdk.capture).not.toHaveBeenCalled()
+  expect(constructor).toHaveBeenCalledTimes(1)
+  expect(options()).toMatchObject({ capture_pageview: true, capture_pageleave: false, disable_session_recording: false })
+  expect(analytics.getStudyAnalyticsStatus().status).toBe('ready')
+  expect(filterEvent('$pageview', {})?.properties).toMatchObject({ study_session_id: 'random-study-session', is_test: true })
+  expect(filterEvent('$pageview', {})?.properties).not.toHaveProperty('consented_at')
+  await analytics.initializeStudyAnalytics(context({consent:null}))
+  expect(sdk.init).toHaveBeenCalledTimes(1)
 })
 
 it('isolates identity in study session storage and disables unrelated automatic capture', async () => {
@@ -57,7 +59,7 @@ it('isolates identity in study session storage and disables unrelated automatic 
   await analytics.initializeStudyAnalytics(context())
   expect(options()).toMatchObject({ persistence: 'sessionStorage', persistence_name: expect.stringContaining(EXPERIMENT_VERSION),
     bootstrap: { distinctID: 'random-study-session', isIdentifiedID: false }, person_profiles: 'never',
-    autocapture: false, capture_pageview: false, capture_pageleave: false, capture_exceptions: false,
+    autocapture: false, capture_pageview: true, capture_pageleave: false, capture_exceptions: false,
     capture_performance: false, enable_recording_console_log: false, save_referrer: false, save_campaign_params: false,
     session_recording: { maskAllInputs: true, recordHeaders: false, recordBody: false, recordCrossOriginIframes: false } })
   expect(sdk.startSessionRecording).toHaveBeenCalledWith({ sampling: true, linked_flag: true, url_trigger: true, event_trigger: true })
@@ -65,7 +67,46 @@ it('isolates identity in study session storage and disables unrelated automatic 
   expect(localStorage.length).toBe(0)
 })
 
-it('queues post-consent events with their original method context and deduplicates a stable action key', async () => {
+it('sends one immediate pageleave per exit, not tab switches, and resumes a bfcache page', async () => {
+  const analytics = await import('./studyAnalytics')
+  await analytics.initializeStudyAnalytics(context({consent:null}))
+  document.dispatchEvent(new Event('visibilitychange'))
+  window.dispatchEvent(new Event('focus'))
+  window.history.pushState({}, '', '/?mapZoom=14')
+  expect(sdk.capture).not.toHaveBeenCalled()
+  window.dispatchEvent(new Event('beforeunload'))
+  window.dispatchEvent(new PageTransitionEvent('pagehide',{persisted:true}))
+  window.dispatchEvent(new PageTransitionEvent('pagehide',{persisted:true}))
+  expect(sdk.capture).toHaveBeenCalledTimes(1)
+  expect(sdk.capture).toHaveBeenLastCalledWith('$pageleave',{}, {transport:'sendBeacon',send_instantly:true})
+  window.dispatchEvent(new PageTransitionEvent('pageshow',{persisted:true}))
+  window.dispatchEvent(new PageTransitionEvent('pageshow',{persisted:true}))
+  await analytics.initializeStudyAnalytics(context({consent:null}))
+  expect(sdk.init).toHaveBeenCalledTimes(2)
+  expect(sdk.init.mock.calls[1][1].capture_pageview).toBe(true)
+  expect(sdk.capture).toHaveBeenCalledTimes(1)
+  window.dispatchEvent(new PageTransitionEvent('pagehide'))
+  expect(sdk.capture).toHaveBeenCalledTimes(2)
+  analytics.stopStudyAnalytics()
+  window.dispatchEvent(new PageTransitionEvent('pagehide'))
+  window.dispatchEvent(new PageTransitionEvent('pageshow',{persisted:true}))
+  expect(sdk.capture).toHaveBeenCalledTimes(2)
+})
+
+it('preserves page duration, page identity and replay diagnostics without URL query or profile properties', async () => {
+  const analytics = await import('./studyAnalytics')
+  await analytics.initializeStudyAnalytics(context({consent:null}))
+  const event=filterEvent('$pageleave',{$pageview_id:'page-1',$prev_pageview_id:'page-1',$prev_pageview_duration:20,
+    $prev_pageview_pathname:'/?private=secret',$current_url:window.location.href,$recording_status:'active',
+    $session_recording_start_reason:'sampling_overridden',$replay_sample_rate:1,$sdk_debug_recording_script_not_loaded:false})
+  expect(event?.properties).toMatchObject({$pageview_id:'page-1',$prev_pageview_id:'page-1',$prev_pageview_duration:20,
+    $prev_pageview_pathname:'/',$current_url:`${window.location.origin}/`,is_test:true,
+    $recording_status:'active',$session_recording_start_reason:'sampling_overridden',$replay_sample_rate:1,
+    $sdk_debug_recording_script_not_loaded:false,study_session_id:'random-study-session'})
+  expect(JSON.stringify(event)).not.toContain('secret')
+})
+
+it('queues visit events with their original method context and deduplicates a stable action key', async () => {
   const analytics = await import('./studyAnalytics')
   const loading = analytics.initializeStudyAnalytics(context({ phase: 'old-task', method: 'old' }))
   expect(analytics.captureStudyEvent('study_method_started', {}, { dedupeKey: 'method:old' })).toBe(true)
@@ -136,7 +177,7 @@ it('sends only explicit events and coded study properties, with sanitized SDK me
   expect(event).not.toHaveProperty('$set_once')
   expect(event?.properties).not.toHaveProperty('$initial_referrer')
   expect(filterEvent('$autocapture', {})).toBeNull()
-  expect(filterEvent('$pageview', {})).toBeNull()
+  expect(filterEvent('$pageview', {})).not.toBeNull()
   expect(filterEvent('$exception', {})).toBeNull()
   expect(filterEvent('study_control_clicked', { control: 'unregistered_control' })?.properties).not.toHaveProperty('control')
 })

@@ -12,12 +12,13 @@ import { StudyStepIntroduction } from './StudyStepIntroduction'
 import { StudyRating } from './StudyRating'
 import { StudySpotlight } from './StudySpotlight'
 import { StudyExplorePrompt, StudyWelcome } from './StudyEntryDialogs'
-import { useStudyAnalytics } from './useStudyAnalytics'
+import { useStudyAnalytics, useStudyPageVisit } from './useStudyAnalytics'
 import { SERVICE_TOUR } from './serviceTour'
 import { EMPTY_HINT_CONTEXT, HINT_DELAY_MS, selectStudyHint } from './studyHints'
 
 const SEOUL = '/?mapLat=37.5665&mapLng=126.978&mapZoom=11'
 export function StudyApp() {
+  const visit=useStudyPageVisit()
   const [dataset,setDataset] = useState<StudyDataset | null>(null)
   const [error,setError] = useState(false)
   const [revision,setRevision] = useState(0)
@@ -27,14 +28,14 @@ export function StudyApp() {
     return () => abort.abort()
   },[revision])
   if (!dataset) return <main className="study-loading"><img src="/logo-bok-search.svg" alt="복덕방" width="48" /><h1>공공주택 지도 체험</h1>{error ? <><p role="alert">예시 데이터를 불러오지 못했습니다. 인터넷 연결을 확인해 주세요.</p><button onClick={()=>{setError(false);setRevision(r=>r+1)}}>다시 불러오기</button></> : <p role="status">체험 지도를 준비하고 있습니다…</p>}</main>
-  return <StudyExperience dataset={dataset} />
+  return <StudyExperience dataset={dataset} visit={visit} />
 }
-function StudyExperience({dataset}:{dataset:StudyDataset}) {
+function StudyExperience({dataset,visit}:{dataset:StudyDataset;visit:ReturnType<typeof useStudyPageVisit>}) {
   const navigate = useNavigate()
   const {search} = useLocation()
   const searchRef=useRef(search)
   searchRef.current=search
-  const [state,dispatch] = useReducer(studyReducer, dataset.datasetVersion, version => readState(version) ?? initialState(version,crypto.randomUUID(),new URLSearchParams(location.search).get('test') === '1'))
+  const [state,dispatch] = useReducer(studyReducer, dataset.datasetVersion, version => readState(version) ?? initialState(version,visit.sessionId,visit.test))
   const capture=useStudyAnalytics(state)
   const [mode,setMode] = useState<MapMode>('complexes')
   const [mapKey,setMapKey] = useState(0)
@@ -206,7 +207,7 @@ function StudyExperience({dataset}:{dataset:StudyDataset}) {
     {mode === 'announcements' && <div className="study-mode-legend">숫자 = 공고가 있는 단지 수</div>}
     <div className="study-data-notice">체험용 예시 데이터 · 실제 모집정보가 아닙니다 · 기준일 {dataset.asOf}</div>
     {state.test && <span className="study-test-label">테스트 세션 · 분석 제외</span>}
-    {state.step === 'intro' && <StudyWelcome onConsent={()=>dispatch({type:'accept-consent',acceptedAt:new Date().toISOString()})} />}
+    {state.step === 'intro' && <StudyWelcome onStart={()=>dispatch({type:'start-study'})} />}
     {state.step === 'explore' && (explorePromptOpen
       ? <StudyExplorePrompt onStart={()=>{capture('study_control_clicked',{control:'survey_start'});next('briefing')}}
         onExplore={()=>{capture('study_control_clicked',{control:'explore_more'});setExplorePromptOpen(false);requestAnimationFrame(()=>document.getElementById('study-explore-start')?.focus())}} />
@@ -215,7 +216,7 @@ function StudyExperience({dataset}:{dataset:StudyDataset}) {
       <span className="study-eyebrow">두 방법 비교·설문 · 약 4~6분</span>
       <h1 id="study-title">공고를 찾는 두 가지 방법,<br />직접 써 보고 알려 주세요.</h1>
       <p>지금까지는 <strong>공공주택 단지가 어디에 있는지</strong> 살펴봤어요.</p><p>이제 <strong>현재 모집공고가 열려 있는 단지</strong>를 두 방법으로 찾아보고, 더 와닿는 방법을 알려 주세요.</p>
-      <p className="study-muted">체험용 예시 데이터입니다. 시작할 때 안내한 동의에 따라 체험 기록과 화면 조작 과정을 수집합니다. 설문 응답은 임의 참여번호로 체험 결과와 연결합니다.</p>
+      <p className="study-muted">체험용 예시 데이터입니다. 페이지에 접속한 시점부터 체험 기록과 화면 조작 과정을 수집합니다. 설문 응답은 임의 참여번호로 체험 결과와 연결합니다.</p>
       {!import.meta.env.VITE_TALLY_FORM_ID && <p className="study-setup-notice">사전 점검 버전: 설문 제출 연결을 준비하고 있습니다.</p>}
       <button className="study-primary" autoFocus onClick={()=>next(`${state.order[0]}-task`)}>첫 번째 방법 알아보기 <span aria-hidden="true">→</span></button>
     </section></div>}

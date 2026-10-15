@@ -1,12 +1,25 @@
 import { readFileSync } from 'node:fs'
-import { describe, expect, it } from 'vitest'
-import { announcementsByComplex, createStudyRepositories, decodeStudyDataset } from './data'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { announcementsByComplex, createStudyRepositories, decodeStudyDataset, loadStudyDataset } from './data'
 
-const data = decodeStudyDataset(JSON.parse(readFileSync('public/study/national-500-v2.json','utf8')))
+const rawData = JSON.parse(readFileSync('public/study/national-500-v2.json','utf8'))
+const data = decodeStudyDataset(rawData)
 const bounds = {southWestLat:32,southWestLng:124,northEastLat:39,northEastLng:132}
 const signal = new AbortController().signal
 
+afterEach(()=>{vi.unstubAllGlobals()})
+
 describe('national study dataset',()=>{
+  it('loads the deployed fixture and rejects a response from a different dataset version',async()=>{
+    const fetchDataset=vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify(rawData)))
+      .mockResolvedValueOnce(new Response(JSON.stringify({...rawData,datasetVersion:'national-500-v1'})))
+    vi.stubGlobal('fetch',fetchDataset)
+    await expect(loadStudyDataset(signal)).resolves.toMatchObject({datasetVersion:'national-500-v2'})
+    expect(fetchDataset).toHaveBeenCalledWith('/study/national-500-v2.json',{signal})
+    await expect(loadStudyDataset(signal)).rejects.toThrow('시연 데이터 버전이 올바르지 않습니다.')
+  })
+
   it('has the exact regional allocation, 25 Seoul districts, statuses and no live attachments',()=>{
     expect(data.snapshot.mapComplexItems).toHaveLength(500)
     expect(data.snapshot.announcementDetails).toHaveLength(30)
