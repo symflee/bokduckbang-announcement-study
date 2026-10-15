@@ -111,6 +111,8 @@ function AnchoredStudySpotlight({tip,index,total,label,nextLabel,onPrevious,onNe
   },[tip.target,tip.portalTarget,tip.focusTarget])
   // A panel guide has one home. Wait for that panel instead of flashing a floating copy.
   if(tip.portalTarget && !portalHost) return null
+  // The mobile filter already dims the background with its modal backdrop.
+  const hasModalBackdrop=Boolean(portalHost?.closest('[role="dialog"][aria-modal="true"]'))
   const content = <section ref={card} className="study-tip" role="note" aria-label={label}
       style={portalHost ? {position:'static',width:'100%',maxHeight:'none',margin:'16px 0 0',boxShadow:'none'} : placement ? {left:placement.left,top:placement.top,width:placement.width,maxHeight:placement.maxHeight} : undefined}>
       <div className="study-tip-heading"><span className="study-eyebrow">{label} · {index+1} / {total}</span>{onClose && <button type="button" onClick={onClose} aria-label={closeLabel}>×</button>}</div>
@@ -118,7 +120,7 @@ function AnchoredStudySpotlight({tip,index,total,label,nextLabel,onPrevious,onNe
       <div className="study-tip-actions">{total > 1 && <button type="button" disabled={index===0} onClick={onPrevious}>이전</button>}<Button onClick={onNext}>{nextLabel}</Button></div>
     </section>
   return <>
-    {placement?.frame && !portalHost && <div className="study-spotlight-frame" style={placement.frame} aria-hidden="true" />}
+    {placement?.frame && !hasModalBackdrop && <div className="study-spotlight-frame" style={placement.frame} aria-hidden="true" />}
     {portalHost ? createPortal(content,portalHost) : content}
   </>
 }

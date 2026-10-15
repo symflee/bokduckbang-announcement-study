@@ -11,6 +11,7 @@ afterEach(()=>{vi.useRealTimers();vi.restoreAllMocks();vi.unstubAllGlobals()})
 describe('소개 강조 위치',()=>{
   it.each([1024,375])('필터 안내와 이동 버튼을 실제 필터 창 안에 한 번만 표시한다 (%i px)',async width=>{
     vi.stubGlobal('innerWidth',width)
+    vi.spyOn(HTMLElement.prototype,'getBoundingClientRect').mockReturnValue(new DOMRect(120,80,320,440))
     const onNext=vi.fn(), onApply=vi.fn()
     render(<><ComplexFilterToolbar filters={{}} onApply={onApply} previewTopic="applicationStatus" />
       <StudySpotlight tip={{target:'[data-study-filter-panel="applicationStatus"]',portalTarget:'[data-study-filter-guide-host]',title:'모집 상태로 골라요',text:'원하는 상태의 단지를 볼 수 있어요.'}}
@@ -20,6 +21,12 @@ describe('소개 강조 위치',()=>{
     const guide=within(dialog).getByRole('note',{name:'서비스 소개'})
     expect(screen.getAllByRole('note',{name:'서비스 소개'})).toHaveLength(1)
     expect(guide).toHaveTextContent('모집 상태로 골라요')
+    // The desktop panel needs the tour shade; the mobile modal already has its own backdrop.
+    const shade=document.querySelector('.study-spotlight-frame')
+    if(width>767) {
+      expect(shade).toBeInTheDocument()
+      expect(shade).toHaveStyle({left:'120px',top:'80px',width:'320px',height:'440px'})
+    } else expect(shade).not.toBeInTheDocument()
     fireEvent.click(within(guide).getByRole('button',{name:'다음'}))
     expect(onNext).toHaveBeenCalledOnce()
     fireEvent.click(within(guide).getByRole('button',{name:'이전'}))
