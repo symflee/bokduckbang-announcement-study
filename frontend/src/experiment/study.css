@@ -147,12 +147,6 @@ button.study-spotlit { background:color-mix(in srgb,var(--ds-color-deadline) 10%
 
 .study-actions .study-hint-button:not(:disabled) { background:var(--ds-color-action-soft); border:2px solid var(--ds-color-action); color:var(--ds-color-action); font-weight:700; box-shadow:0 0 0 3px #32724914; }
 
-.study-pin-legend { display:grid; grid-template-columns:1fr 1fr; gap:10px; list-style:none; margin:0 0 20px; padding:0; font-size:12px; }
-.study-pin-legend li { display:flex; align-items:center; gap:7px; }
-.study-pin-legend li::before { content:''; width:12px; height:12px; border-radius:4px; flex:none; background:#333333; }
-.study-pin-legend [data-status="upcoming"]::before { background:var(--ds-color-status-upcoming); }
-.study-pin-legend [data-status="applying"]::before { background:var(--ds-color-status-applying); }
-.study-pin-legend [data-status="selected"]::before { background:var(--ds-color-brand); }
 @media(max-width:767px) {
   .app-shell.is-service-tour .housing-explorer .housing-detail-layer,
   .app-shell.is-study-route-guidance .housing-explorer .housing-detail-layer {
@@ -161,3 +155,18 @@ button.study-spotlit { background:color-mix(in srgb,var(--ds-color-deadline) 10%
 }
 
 .study-return-survey { position:fixed; right:20px; bottom:90px; z-index:100; width:auto; }
+
+.study-entry-dialog { position:fixed; inset:0; margin:auto; border:1px solid var(--ds-color-divider); width:min(620px,calc(100% - 32px)); max-height:calc(100dvh - 32px); overflow:auto; box-sizing:border-box; }
+.study-entry-dialog::backdrop { background:#16302770; backdrop-filter:blur(4px); }
+.study-entry-dialog h1:focus, .study-entry-dialog h2:focus { outline:none; }
+.study-entry-dialog h1, .study-entry-dialog h2 { word-break:keep-all; }
+.study-entry-dialog h2 { margin:16px 0; font-size:26px; line-height:1.4; letter-spacing:-.04em; }
+.study-consent-notice { padding:14px 18px; margin:18px 0; background:var(--ds-color-surface-subtle); border:1px solid var(--ds-color-divider); border-radius:14px; }
+.study-consent-notice p { font-size:12px; line-height:1.75; margin:0 0 12px; }
+.study-consent-notice summary { cursor:pointer; font-size:12px; color:var(--ds-color-action); font-weight:700; }
+.study-consent-notice details p { margin:10px 0 0; }
+.study-entry-actions { display:flex; flex-direction:column; gap:10px; }
+.study-entry-actions .study-secondary { padding:12px; border:0; background:transparent; color:var(--ds-color-label); cursor:pointer; font-size:13px; }
+.study-entry-actions button:focus-visible { outline:3px solid var(--ds-color-action); outline-offset:3px; }
+.study-explore-start { position:fixed; z-index:100; right:24px; bottom:36px; width:auto; }
+@media(max-width:767px) { .study-explore-start { right:16px; bottom:88px; } .study-entry-dialog { padding:24px; } }

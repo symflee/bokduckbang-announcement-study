@@ -195,31 +195,33 @@ it.each([true,false])('모바일 상세의 모달 동작을 소개 중에만 해
 
 it.each([true,false])('잘못된 경로 안내 중 공고지도 버튼으로 상세를 닫고 전환한다: mobile=%s',async mobile=>{
   vi.stubGlobal('matchMedia',(query:string)=>({matches:mobile && (query==='(max-width: 767px)' || query==='(max-width: 1023px)')}))
-  const repository=createRepository(),onModeChange=vi.fn()
+  const repository=createRepository(),onModeChange=vi.fn(),onEvent=vi.fn()
   try {
     render(<MemoryRouter initialEntries={['/?announcementId=201']}><PublicHousingExplorer showWelcome={false} repository={repository} mapRepository={repository}
-      study={{mode:'complexes',onModeChange,newModeAvailable:true,announcements:{},guideAnnouncementTab:true,onEvent:()=>{}}}/></MemoryRouter>)
+      study={{mode:'complexes',onModeChange,newModeAvailable:true,announcements:{},guideAnnouncementTab:true,onEvent}}/></MemoryRouter>)
     expect(await screen.findByRole('dialog',{name:'공고 상세'})).toHaveAttribute('aria-modal','false')
     const tab=screen.getByRole('button',{name:'공고지도'})
     expect(tab).toHaveClass('is-study-guided')
     fireEvent.click(tab)
     await waitFor(()=>expect(screen.queryByRole('dialog',{name:'공고 상세'})).not.toBeInTheDocument())
     expect(onModeChange).toHaveBeenCalledWith('announcements')
+    expect(onEvent).not.toHaveBeenCalledWith({type:'control',control:'detail_close'})
   } finally { vi.unstubAllGlobals() }
 })
 
 it('서비스 소개는 지정한 핀 위치로 시작한다',()=>{
   const repository=createRepository()
   render(<MemoryRouter><PublicHousingExplorer showWelcome={false} repository={repository} mapRepository={repository}
-    study={{mode:'complexes',onModeChange:()=>{},newModeAvailable:false,announcements:{},tourStep:4,tourCamera:{latitude:37.581326,longitude:126.994176,zoom:13},onEvent:()=>{}}}/></MemoryRouter>)
+    study={{mode:'complexes',onModeChange:()=>{},newModeAvailable:false,announcements:{},tourStep:SERVICE_TOUR.findIndex(tip=>tip.view==='pins'),tourCamera:{latitude:37.581326,longitude:126.994176,zoom:13},onEvent:()=>{}}}/></MemoryRouter>)
   expect(screen.getByText('카메라 37.581326,126.994176')).toBeVisible()
 })
 
 it('소개 중 핀 위치로 이동한 뒤 다음 설명에서도 지도와 사용자가 옮긴 위치를 유지한다',()=>{
   const repository=createRepository()
+  const pinsStep=SERVICE_TOUR.findIndex(tip=>tip.view==='pins')
   function Experience() {
-    const [tourStep,setTourStep]=useState(3)
-    const tourCamera=tourStep>=4?{latitude:37.581326,longitude:126.994176,zoom:13}:undefined
+    const [tourStep,setTourStep]=useState(pinsStep-1)
+    const tourCamera=tourStep>=pinsStep?{latitude:37.581326,longitude:126.994176,zoom:13}:undefined
     return <><button onClick={()=>setTourStep(step=>step+1)}>소개 다음</button>
       <PublicHousingExplorer showWelcome={false} repository={repository} mapRepository={repository}
         study={{mode:'complexes',onModeChange:()=>{},newModeAvailable:false,announcements:{},tourStep,tourCamera,onEvent:()=>{}}}/></>
@@ -242,7 +244,7 @@ it('서비스 소개에서 공고 목록을 실제로 열고 다음 소개로 �
   const repository=createRepository()
   function Experience() {
     const [tourStep,setTourStep]=useState(SERVICE_TOUR.findIndex(tip=>tip.target==='#announcement-list-trigger'))
-    return <><button onClick={()=>setTourStep(SERVICE_TOUR.findIndex(tip=>tip.view==='list'))}>목록 시연 시작</button><button onClick={()=>setTourStep(SERVICE_TOUR.findIndex(tip=>tip.target==='#recent-list-trigger'))}>다음 소개</button>
+    return <><button onClick={()=>setTourStep(SERVICE_TOUR.findIndex(tip=>tip.view==='list'))}>목록 시연 시작</button><button onClick={()=>setTourStep(SERVICE_TOUR.findIndex(tip=>tip.view==='list-announcement'))}>다음 소개</button>
       <PublicHousingExplorer showWelcome={false} repository={repository} mapRepository={repository}
         study={{mode:'complexes',onModeChange:()=>{},newModeAvailable:false,announcements:{},tourStep,onEvent:()=>{}}} /></>
   }
@@ -253,6 +255,46 @@ it('서비스 소개에서 공고 목록을 실제로 열고 다음 소개로 �
   expect(screen.getByRole('button',{name:'공고 목록'})).toHaveAttribute('aria-expanded','true')
   fireEvent.click(screen.getByRole('button',{name:'다음 소개'}))
   expect(screen.getByRole('button',{name:'공고 목록'})).toHaveAttribute('aria-expanded','false')
+})
+
+it('모집상태 소개에서는 필터 창만 열고 실제 사용자 적용만 실험 클릭으로 전달한다', async () => {
+  const repository=createRepository(), onEvent=vi.fn()
+  function Experience() {
+    const [tourStep,setTourStep]=useState<number | undefined>(SERVICE_TOUR.findIndex(tip=>tip.filterPreview==='applicationStatus'))
+    return <><button onClick={()=>setTourStep(undefined)}>소개 끝내기</button>
+      <PublicHousingExplorer showWelcome={false} repository={repository} mapRepository={repository}
+        study={{mode:'complexes',onModeChange:()=>{},newModeAvailable:false,announcements:{},tourStep,onEvent}} /></>
+  }
+  render(<MemoryRouter><Experience /></MemoryRouter>)
+  const preview=screen.getByRole('region',{name:'모집상태 필터'})
+  expect(within(preview).getByRole('checkbox',{name:'접수중'})).not.toBeChecked()
+  expect(onEvent.mock.calls.filter(([event])=>event.type==='control')).toEqual([])
+  fireEvent.click(screen.getByRole('button',{name:'소개 끝내기'}))
+  expect(screen.queryByRole('region',{name:'모집상태 필터'})).not.toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button',{name:'모집상태 필터 열기'}))
+  fireEvent.click(screen.getByRole('checkbox',{name:'접수중'}))
+  await waitFor(()=>expect(onEvent).toHaveBeenCalledWith(expect.objectContaining({type:'context',context:expect.objectContaining({statusFiltered:true})})))
+  expect(onEvent.mock.calls.filter(([event])=>event.type==='control').map(([event])=>event.control)).toEqual(['filter_open','filter_apply'])
+  fireEvent.click(screen.getByRole('button',{name:'전체 필터 열기'}))
+  onEvent.mockClear()
+  fireEvent.click(screen.getByRole('button',{name:'전체 필터 초기화'}))
+  expect(onEvent.mock.calls.filter(([event])=>event.type==='control').map(([event])=>event.control)).toEqual(['filter_reset'])
+})
+
+it('지도 확대·축소와 검색 요청·결과 선택을 검색어 없이 실험 제어 이벤트로 전달한다', async () => {
+  const repository=createRepository(), onEvent=vi.fn()
+  const search=searchRepository([], [searchItem('REGION','11','서울특별시 전체',37.5665,126.978)])
+  render(<MemoryRouter><PublicHousingExplorer showWelcome={false} repository={repository} mapRepository={repository} searchRepository={search}
+    study={{mode:'complexes',onModeChange:()=>{},newModeAvailable:false,announcements:{},onEvent}} /></MemoryRouter>)
+  fireEvent.click(screen.getByRole('button',{name:'지도 확대'}))
+  fireEvent.click(screen.getByRole('button',{name:'지도 축소'}))
+  fireEvent.change(screen.getByRole('searchbox'),{target:{value:'서울'}})
+  fireEvent.click(await screen.findByRole('button',{name:/^서울특별시 전체/}))
+  expect(onEvent.mock.calls.filter(([event])=>event.type==='control').map(([event])=>event)).toEqual([
+    {type:'control',control:'map_zoom_in'}, {type:'control',control:'map_zoom_out'},
+    {type:'control',control:'search_submit'}, {type:'control',control:'search_result'},
+  ])
+  expect(search.search).toHaveBeenCalledTimes(4)
 })
 
 it('공고 탭을 눌러 다음 소개로 넘어가도 열린 목록을 유지한다', async () => {
@@ -305,6 +347,10 @@ it.each(['filter', 'pin', 'multiple', 'list'] as const)('실험 상세 요청과
   expect(request).toMatchObject({id:'201',source:route==='filter'?'filtered_complex':route==='list'?'other':'announcement_pin',complexId:route==='list'?null:'17'})
   if(route==='filter') expect(request.applicationStatuses).toEqual(['APPLYING'])
   await waitFor(()=>expect(onEvent).toHaveBeenCalledWith({type:'detail',requestId:request.requestId,id:'201',status:'APPLYING'}))
+  const controls=onEvent.mock.calls.filter(([event])=>event.type==='control').map(([event])=>event.control)
+  expect(controls).toEqual(route==='filter' ? ['complex_pin'] : route==='list'
+    ? ['announcement_list_toggle','announcement_list_item'] : route==='multiple'
+      ? ['announcement_pin','announcement_choice'] : ['announcement_pin'])
 })
 
 it.each(['SUBWAY_STATION', 'REGION'] as const)('외부 %s 위치 선택은 경계를 해제하고 지도만 이동한다', async (type) => {
@@ -3658,6 +3704,7 @@ function FakeNaverMap({
   onMarkerSelect,
   onTransitionInterrupt,
   onUserInteraction,
+  onZoomControl,
   onViewportChange,
   transitioning = false,
 }: NaverMapProps) {
@@ -3699,6 +3746,8 @@ function FakeNaverMap({
       <output data-testid="map-camera-zoom">{currentCamera.zoom}</output>
       <output data-testid="map-camera-request">{cameraRequestId}</output>
       <button type="button" onClick={() => onUserInteraction?.()}>지도 직접 조작</button>
+      <button type="button" onClick={() => onZoomControl?.('in')}>지도 확대</button>
+      <button type="button" onClick={() => onZoomControl?.('out')}>지도 축소</button>
       <button
         type="button"
         onClick={() => onTransitionInterrupt?.()}

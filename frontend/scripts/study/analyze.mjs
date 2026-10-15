@@ -38,6 +38,31 @@ const preferences=['필터로 찾기 (첫 번째 방법)','공고지도로 찾�
 const orders=['old,new']
 const reasons=['공고 위치를 한눈에 볼 수 있어서','공고 핀에서 필요한 정보를 볼 수 있어서','모집상태 필터 조작이 편해서','모집상태 필터만으로 충분해서','핀이나 메뉴가 복잡해서','두 방법의 차이를 느끼지 못해서','어디를 눌러야 할지 바로 알 수 있어서']
 const ratings=['1','2','3','4','5','unsure']
+function hintMetrics(rows,method) {
+  const counts=[], firstTimes=[]
+  let countMissing=0, countInvalid=0, firstMissing=0, firstInvalid=0
+  for (const row of rows) {
+    const rawCount=row[`${method}_help_open_count`]
+    const count=number(rawCount)
+    if (rawCount === undefined || String(rawCount).trim() === '') countMissing++
+    else if (count === null || !Number.isInteger(count) || count < 0 || (count > 0) !== truth(row[`${method}_help`])) countInvalid++
+    else counts.push(count)
+    if (!truth(row[`${method}_help`])) continue
+    const rawFirst=row[`${method}_help_at_ms`]
+    const first=number(rawFirst), elapsed=number(row[`${method}_elapsed_ms`])
+    if (rawFirst === undefined || String(rawFirst).trim() === '') firstMissing++
+    else if (first === null || first < 0 || elapsed === null || first > elapsed) firstInvalid++
+    else firstTimes.push(first/1000)
+  }
+  return {
+    helpOpenCountRecords:counts.length,helpOpenCountMissing:countMissing,helpOpenCountInvalid:countInvalid,
+    helpOpenCountTotal:counts.reduce((sum,value)=>sum+value,0),
+    helpOpenCountMean:ratio(counts.reduce((sum,value)=>sum+value,0),counts.length),helpOpenCountMedian:median(counts),
+    helpOpenCountDistribution:Object.fromEntries([...new Set(counts)].toSorted((a,b)=>a-b).map(count=>[String(count),counts.filter(value=>value===count).length])),
+    firstHelpAtRecords:firstTimes.length,firstHelpAtMissing:firstMissing,firstHelpAtInvalid:firstInvalid,
+    medianFirstHelpSeconds:median(firstTimes),
+  }
+}
 function metrics(rows) {
   const preference=Object.fromEntries(preferences.map(option=>[option,rows.filter(r=>r[questions.preference]===option).length]))
   const need=rows.map(r=>number(r[questions.need])).filter(n=>n!==null)
@@ -51,6 +76,7 @@ function metrics(rows) {
       skipped:rows.filter(r=>r[`${method}_outcome`]==='skipped').length,
       completionRate:ratio(rows.filter(r=>r[`${method}_outcome`]==='success').length,rows.length),
       additionalHelpUseRate:ratio(rows.filter(r=>truth(r[`${method}_help`])).length,rows.length),
+      ...hintMetrics(rows,method),
       normalRecords:normal.length,interruptedOrInvalidRecords:rows.length-normal.length,
       medianSuccessSeconds:median(completed.map(r=>Number(r[`${method}_elapsed_ms`])/1000)),
       easeMean:ratio(ease.reduce((a,b)=>a+b,0),ease.length),easeUnsure:rows.length-ease.length,
@@ -68,7 +94,7 @@ export function analyze(rows) {
       && ratings.includes(row[`ease_${method}`]) && ['true','false'].includes(booleanText(row[`${method}_help`]))
       && (row[`${method}_outcome`]==='skipped' ? !row[`${method}_completion_source`]
         : row[`${method}_completion_source`]===(method==='old'?'filtered_complex':'announcement_pin')))
-    if(!row.session_id || booleanText(row.is_test)!=='false' || row.experiment_version!=='announcement-map-v8'
+    if(!row.session_id || booleanText(row.is_test)!=='false' || row.experiment_version!=='announcement-map-v9'
       || row.question_version!=='survey-v3' || row.dataset_version!=='national-500-v2' || !orders.includes(row.method_order)
       || !validMethods || !preferences.includes(row[questions.preference]) || !['1','2','3','4','5','판단하기 어려움'].includes(row[questions.need])) {
       excluded.invalid++;continue

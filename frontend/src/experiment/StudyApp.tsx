@@ -11,8 +11,10 @@ import { StudyMapBoundary } from './StudyMapBoundary'
 import { StudyStepIntroduction } from './StudyStepIntroduction'
 import { StudyRating } from './StudyRating'
 import { StudySpotlight } from './StudySpotlight'
+import { StudyExplorePrompt, StudyWelcome } from './StudyEntryDialogs'
+import { useStudyAnalytics } from './useStudyAnalytics'
 import { SERVICE_TOUR } from './serviceTour'
-import { EMPTY_HINT_CONTEXT, HINT_DELAY_MS, studyHint } from './studyHints'
+import { EMPTY_HINT_CONTEXT, HINT_DELAY_MS, selectStudyHint } from './studyHints'
 
 const SEOUL = '/?mapLat=37.5665&mapLng=126.978&mapZoom=11'
 export function StudyApp() {
@@ -33,10 +35,12 @@ function StudyExperience({dataset}:{dataset:StudyDataset}) {
   const searchRef=useRef(search)
   searchRef.current=search
   const [state,dispatch] = useReducer(studyReducer, dataset.datasetVersion, version => readState(version) ?? initialState(version,crypto.randomUUID(),new URLSearchParams(location.search).get('test') === '1'))
+  const capture=useStudyAnalytics(state)
   const [mode,setMode] = useState<MapMode>('complexes')
   const [mapKey,setMapKey] = useState(0)
   const [ready,setReady] = useState(false)
   const [collapsed,setCollapsed] = useState(false)
+  const [explorePromptOpen,setExplorePromptOpen] = useState(true)
   const [resume,setResume] = useState(()=>Boolean(activeTrial(state) && state.trials[activeTrial(state)!].interrupted && state.trials[activeTrial(state)!].outcome === 'active'))
   const [hintOpen,setHintOpen] = useState(false)
   const [hintContext,setHintContext] = useState<StudyHintContext>(EMPTY_HINT_CONTEXT)
@@ -99,6 +103,7 @@ function StudyExperience({dataset}:{dataset:StudyDataset}) {
     return ()=>{clearInterval(timer);document.removeEventListener('visibilitychange',visibility);window.removeEventListener('pagehide',persist)}
   },[flush])
   const onEvent = useCallback((event:ExplorerStudyEvent) => {
+    if(event.type==='control') {capture('study_control_clicked',{control:event.control});return}
     if (event.type === 'context') {
       const current=stateRef.current
       if(current.step==='warmup') {
@@ -116,20 +121,28 @@ function StudyExperience({dataset}:{dataset:StudyDataset}) {
       return
     }
     if (event.type === 'ready') {flush();readyRef.current=event.ready;setReady(event.ready);return}
-    if (event.type === 'error' && event.surface !== 'detail') {flush();readyRef.current=false;setReady(false)}
+    if (event.type === 'error') {
+      capture('study_error',{surface:event.surface})
+      if(event.surface !== 'detail') {flush();readyRef.current=false;setReady(false)}
+    }
     if (eventBlockedRef.current) return
     if (event.type === 'path' || event.type === 'request-detail') {send(event);setHintOpen(false)}
-    if (event.type === 'detail') send({type:'success',requestId:event.requestId,id:event.id,status:event.status})
-    if (event.type === 'retry') send(event)
+    if (event.type === 'detail') {
+      const active=activeTrial(stateRef.current)
+      capture('study_announcement_opened',{status:event.status,source:active
+        ? stateRef.current.trials[active].requestedDetail?.source : 'other'}, {dedupeKey:`detail:${event.requestId}`})
+      send({type:'success',requestId:event.requestId,id:event.id,status:event.status})
+    }
+    if (event.type === 'retry') {capture('study_retry');send(event)}
     if (event.type === 'error') send({type:'error'})
-  },[flush,send])
+  },[flush,send,capture])
   function next(step:StudyStep) {
     flush()
     if (['old-task','new-task'].includes(step)) {
       readyRef.current=false;setReady(false);setMode('complexes');flushSync(()=>navigate(SEOUL,{replace:true}));setMapKey(k=>k+1)
     }
-    if (step === 'compare' || step === 'survey') {
-      // A native mobile detail dialog would otherwise block the survey behind it.
+    if (step === 'explore' || step === 'compare' || step === 'survey') {
+      // Close the native mobile detail before returning focus to the map or survey.
       flushSync(()=>navigate(`/?${clearDetailQuery(new URLSearchParams(search))}`,{replace:true}))
     }
     setCollapsed(false);setHintOpen(false);dispatch({type:'step',step})
@@ -142,40 +155,34 @@ function StudyExperience({dataset}:{dataset:StudyDataset}) {
   const onSubmitted = useCallback((responseId:string)=>dispatch({type:'submitted',responseId}),[])
   const summary = useMemo(()=>makeSummary(state,dataset.asOf,window.matchMedia('(max-width: 767px)').matches),[state,dataset.asOf])
   function showTourStep(index:number) {
+    capture('study_control_clicked',{control:index<state.tourStep ? 'tour_previous' : 'tour_next'})
     dispatch({type:'tour-step',index})
   }
   const guideAnnouncementTab=key === 'new' && Boolean(trial?.wrongRoute) && !resume && !ratingOpen
     && (mode !== 'announcements' || hintContext.detail === 'announcement' || hintContext.listOpen)
   const hintAvailable=ready && Boolean(trial && trial.elapsedMs >= HINT_DELAY_MS)
+  const currentHint=key ? selectStudyHint(key,mode,hintContext) : null
   return <div className={`app-shell study-shell ${touring ? 'is-service-tour' : ''} ${guideAnnouncementTab ? 'is-study-route-guidance' : ''}`}>
-    <div className="study-map" onPointerDownCapture={()=>{if(hintOpen){flush();setHintOpen(false)}}} onKeyDownCapture={()=>{if(hintOpen){flush();setHintOpen(false)}}} inert={['intro','briefing','survey','complete'].includes(state.step) || resume || introduction !== null || Boolean(ratingOpen)}>
-      <StudyMapBoundary key={mapKey} ready={ready} onFailure={()=>onEvent({type:'error',surface:'map'})} onRetry={()=>{flushSync(()=>send({type:'retry'}));saveState(stateRef.current);window.location.reload()}}>
+    <div className="study-map" onPointerDownCapture={()=>{if(hintOpen){flush();setHintOpen(false)}}} onKeyDownCapture={()=>{if(hintOpen){flush();setHintOpen(false)}}} inert={['intro','briefing','survey','complete'].includes(state.step) || state.step==='explore' && explorePromptOpen || resume || introduction !== null || Boolean(ratingOpen)}>
+      <StudyMapBoundary key={mapKey} ready={ready} onFailure={()=>onEvent({type:'error',surface:'map'})} onRetry={()=>{capture('study_retry');flushSync(()=>send({type:'retry'}));saveState(stateRef.current);window.location.reload()}}>
       <PublicHousingExplorer {...repositories} showWelcome={false} streetViewSupported={false}
-        study={{mode,newModeAvailable:newAvailable,guideAnnouncementTab,announcements,tourStep:touring ? state.tourStep : undefined,tourCamera:touring ? tourCamera : undefined,onModeChange:nextMode=>{flush();setHintOpen(false);setMode(nextMode)},onEvent}} />
+        study={{mode,newModeAvailable:newAvailable,guideAnnouncementTab,announcements,tourStep:touring ? state.tourStep : undefined,tourCamera:touring ? tourCamera : undefined,onModeChange:nextMode=>{capture('study_control_clicked',{control:nextMode==='announcements'?'mode_announcements':'mode_complexes'});flush();setHintOpen(false);setMode(nextMode)},onEvent}} />
       </StudyMapBoundary>
     </div>
     {mode === 'announcements' && <div className="study-mode-legend">숫자 = 공고가 있는 단지 수</div>}
     <div className="study-data-notice">체험용 예시 데이터 · 실제 모집정보가 아닙니다 · 기준일 {dataset.asOf}</div>
     {state.test && <span className="study-test-label">테스트 세션 · 분석 제외</span>}
-    {state.step === 'intro' && <div className="study-modal-backdrop"><section className="study-intro" role="dialog" aria-modal="true" aria-labelledby="study-welcome-title">
-      <img src="/logo-bok-search.svg" alt="복덕방" width="48" height="48" />
-      <span className="study-eyebrow">공공주택 지도 · 복덕방</span>
-      <h1 id="study-welcome-title">설문을 시작하기 전에,<br />서비스를 간단히 소개할게요.</h1>
-      <p>공공주택 단지와 모집공고를 찾는 서비스예요. 주요 기능부터 함께 살펴볼게요.</p>
-      <p>소개 후 버튼들을 눌러 보고, 준비되면 두 방법을 체험해 주세요.</p>
-      <p className="study-muted">지금 보이는 단지·위치·모집조건은 임시로 넣은 체험용 데이터입니다.</p>
-      <button className="study-primary" autoFocus onClick={()=>next('warmup')}>서비스 소개 보기 <span aria-hidden="true">→</span></button>
-    </section></div>}
-    {state.step === 'explore' && <aside className={`study-task-card ${collapsed ? 'is-collapsed' : ''}`} aria-label="버튼 둘러보기">
-      <div className="study-task-heading"><span className="study-eyebrow">설문 시작 전 · 버튼 둘러보기</span><button onClick={()=>setCollapsed(c=>!c)} aria-expanded={!collapsed} aria-label={collapsed ? '버튼 둘러보기 안내 펼치기' : '버튼 둘러보기 안내 접기'}>{collapsed ? '＋' : '−'}</button></div>
-      {!collapsed && <><h2>버튼들을 하나씩 눌러 보세요.</h2><p>검색·필터·공고 목록 등 소개한 버튼들을 눌러 어떤 기능인지 확인해 보세요.</p><p>데이터는 임시 예시예요. 준비가 되면 설문을 시작해 주세요.</p><button className="study-primary" onClick={()=>next('briefing')}>준비됐어요, 설문 시작하기</button></>}
-    </aside>}
+    {state.step === 'intro' && <StudyWelcome onConsent={()=>dispatch({type:'accept-consent',acceptedAt:new Date().toISOString()})} />}
+    {state.step === 'explore' && (explorePromptOpen
+      ? <StudyExplorePrompt onStart={()=>{capture('study_control_clicked',{control:'survey_start'});next('briefing')}}
+        onExplore={()=>{capture('study_control_clicked',{control:'explore_more'});setExplorePromptOpen(false);requestAnimationFrame(()=>document.getElementById('study-explore-start')?.focus())}} />
+      : <button id="study-explore-start" className="study-primary study-explore-start" onClick={()=>setExplorePromptOpen(true)}>설문 시작하기</button>)}
     {state.step === 'briefing' && <div className="study-modal-backdrop"><section className="study-intro" role="dialog" aria-modal="true" aria-labelledby="study-title">
       <span className="study-eyebrow">두 방법 비교·설문 · 약 4~6분</span>
       <h1 id="study-title">공고를 찾는 두 가지 방법,<br />직접 써 보고 알려 주세요.</h1>
       <p>지금까지는 <strong>공공주택 단지가 어디에 있는지</strong> 살펴봤어요.</p><p>이제 <strong>현재 모집공고가 열려 있는 단지</strong>를 두 방법으로 찾아보고, 더 와닿는 방법을 알려 주세요.</p>
-      <p className="study-muted">체험용 예시 데이터입니다. 제출 시 익명 참여번호와 응답·체험 순서·완료 여부·평가·힌트·시간·경로를 Tally에 저장합니다. 이름·연락처와 제출 전 이탈 기록은 수집하지 않습니다.</p>
-      {!import.meta.env.VITE_TALLY_FORM_ID && <p className="study-setup-notice">사전 점검 버전: 설문 연결 전이며 응답을 수집하지 않습니다.</p>}
+      <p className="study-muted">체험용 예시 데이터입니다. 시작할 때 안내한 동의에 따라 체험 기록과 화면 조작 과정을 수집합니다. 설문 응답은 임의 참여번호로 체험 결과와 연결합니다.</p>
+      {!import.meta.env.VITE_TALLY_FORM_ID && <p className="study-setup-notice">사전 점검 버전: 설문 제출 연결을 준비하고 있습니다.</p>}
       <button className="study-primary" autoFocus onClick={()=>next(`${state.order[0]}-task`)}>첫 번째 방법 알아보기 <span aria-hidden="true">→</span></button>
     </section></div>}
     {resume && <div className="study-modal-backdrop"><section className="study-intro" role="dialog" aria-modal="true" aria-label="체험 이어하기"><h1>진행 중이던 체험이 있어요</h1><p>같은 참여번호로 이어갑니다. 페이지를 떠나 있던 시간은 제외하고, 이 과제는 중단 후 재개한 기록으로 구분합니다.</p><button className="study-primary" autoFocus onClick={()=>{lastTick.current=performance.now();setResume(false)}}>이어서 체험하기</button></section></div>}
@@ -188,9 +195,9 @@ function StudyExperience({dataset}:{dataset:StudyDataset}) {
             ? key === 'new' ? '이번에는 공고지도에서 핀을 통해 공고를 찾아 보세요.' : '이번에는 모집상태 필터를 적용하고, 단지지도 핀에서 모집공고를 열어 보세요.'
             : `${METHOD_NAMES[key]} 방법을 직접 사용해 보세요. 막히면 힌트를 확인할 수 있어요.`}</p>
           <div className="study-actions"><button className="study-hint-button" disabled={!hintAvailable} aria-expanded={hintOpen} aria-controls="study-current-hint" onClick={()=>{
-            flush();if(!hintOpen) dispatch({type:'help',reason:'requested'});setHintOpen(open=>!open)
+            flush();if(!hintOpen && currentHint) dispatch({type:'help',reason:'requested',mode,context:hintContext,hintCode:currentHint.code});setHintOpen(open=>!open)
           }}>힌트 보기</button></div>
-          {hintOpen && <p id="study-current-hint" className="study-current-hint" role="note" aria-label="현재 상황 힌트">{studyHint(key,mode,hintContext)}</p>}
+          {hintOpen && <p id="study-current-hint" className="study-current-hint" role="note" aria-label="현재 상황 힌트">{currentHint?.text}</p>}
           {trial.errors > 0 && <p className="study-muted">연결 오류가 기록되었습니다. 지도 오류 안내의 다시 시도를 이용해 주세요.</p>}
         </> : null}
       </>}
@@ -200,7 +207,7 @@ function StudyExperience({dataset}:{dataset:StudyDataset}) {
     {touring && ready && <StudySpotlight key={`tour-${state.tourStep}`} tip={SERVICE_TOUR[state.tourStep]} index={state.tourStep} total={SERVICE_TOUR.length} label="서비스 소개"
       nextLabel={SERVICE_TOUR[state.tourStep].nextLabel}
       onPrevious={()=>showTourStep(state.tourStep-1)}
-      onNext={()=>state.tourStep === SERVICE_TOUR.length-1 ? next('explore') : showTourStep(state.tourStep+1)} />}
+      onNext={()=>{if(state.tourStep === SERVICE_TOUR.length-1) {capture('study_control_clicked',{control:'tour_next'});next('explore')} else showTourStep(state.tourStep+1)}} />}
     {touring && !ready && <aside className="study-task-card" role="status">지도와 화면을 준비하고 있습니다…</aside>}
     {state.step === 'survey' && <div className="study-modal-backdrop"><section className="study-survey" role="dialog" aria-modal="true" aria-label="체험 설문"><div className="study-survey-heading"><div><span className="study-eyebrow">3 / 3 · 비교·설문</span><h1>직접 써 보니 어땠나요?</h1></div><button onClick={()=>next('compare')}>지도로 돌아가기</button></div><TallySurvey summary={summary} onSubmitted={onSubmitted} /></section></div>}
     {state.step === 'complete' && <div className="study-modal-backdrop"><section className="study-intro" role="status"><span className="study-eyebrow">참여 완료</span><h1>의견을 남겨 주셔서 감사합니다.</h1><p>남겨 주신 의견은 공고를 더 쉽게 찾는 방법을 검토하는 데 사용할게요.</p><p className="study-muted">체험 화면은 예시 데이터이며 실제 신청에 사용할 수 없습니다.</p><button className="study-primary" onClick={()=>next('compare')}>지도 더 둘러보기</button></section></div>}

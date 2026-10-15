@@ -1,6 +1,7 @@
-import { act, fireEvent, render } from '@testing-library/react'
+import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { StudySpotlight } from './StudySpotlight'
+import { ComplexFilterToolbar } from '../public-housing/filters/ComplexFilterToolbar'
 
 beforeEach(()=>{
   vi.useFakeTimers()
@@ -8,6 +9,21 @@ beforeEach(()=>{
 })
 afterEach(()=>{vi.useRealTimers();vi.restoreAllMocks();vi.unstubAllGlobals()})
 describe('소개 강조 위치',()=>{
+  it('모바일 필터 안내를 실제 필터 대화상자 안에 넣어 다음 버튼을 사용할 수 있게 한다',async()=>{
+    vi.stubGlobal('innerWidth',375)
+    const onNext=vi.fn(), onApply=vi.fn()
+    render(<><ComplexFilterToolbar filters={{}} onApply={onApply} previewTopic="applicationStatus" />
+      <StudySpotlight tip={{target:'[data-study-filter-panel="applicationStatus"]',portalTarget:'[data-study-filter-guide-host]',title:'모집 상태로 골라요',text:'원하는 상태의 단지를 볼 수 있어요.'}}
+        index={1} total={10} label="서비스 소개" nextLabel="다음" onPrevious={()=>{}} onNext={onNext} /></>)
+    await act(()=>vi.advanceTimersByTimeAsync(40))
+    const dialog=screen.getByRole('dialog',{name:'모집상태 필터'})
+    const guide=within(dialog).getByRole('note',{name:'서비스 소개'})
+    expect(guide).toHaveTextContent('모집 상태로 골라요')
+    fireEvent.click(within(guide).getByRole('button',{name:'다음'}))
+    expect(onNext).toHaveBeenCalledOnce()
+    fireEvent.click(within(guide).getByRole('button',{name:'이전'}))
+    expect(onApply).not.toHaveBeenCalled()
+  })
   it('패널 전환이 끝난 실제 위치로 강조 영역을 갱신한다',()=>{
     let bounds=new DOMRect(-340,80,400,600)
     vi.spyOn(HTMLElement.prototype,'getBoundingClientRect').mockImplementation(function(this:HTMLElement){return this.id==='tour-panel'?bounds:new DOMRect()})

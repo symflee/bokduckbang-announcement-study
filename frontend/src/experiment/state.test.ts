@@ -1,14 +1,47 @@
 import { describe, expect, it } from 'vitest'
-import { activeTrial, initialState, makeSummary, restoreState, studyReducer, type ExperimentState, type TrialKey } from './state'
+import { CONSENT_VERSION, activeTrial, initialState, makeSummary, restoreState, studyReducer, type ExperimentState, type TrialKey } from './state'
 import { parseTallyEvent, tallyUrl } from './tallyAdapter'
 import type { StudyDetailRequest } from './explorerStudy'
-const start=(key:TrialKey='old'):ExperimentState=>({...initialState('data-v2','session'),step:`${key}-task`})
+import { EMPTY_HINT_CONTEXT, selectStudyHint } from './studyHints'
+const consented=()=>studyReducer(initialState('data-v2','session'),{type:'accept-consent',acceptedAt:'2026-10-15T00:00:00.000Z'})
+const start=(key:TrialKey='old'):ExperimentState=>({...consented(),step:`${key}-task`})
+const help={type:'help' as const,reason:'requested' as const,mode:'complexes' as const,context:EMPTY_HINT_CONTEXT,hintCode:selectStudyHint('old','complexes',EMPTY_HINT_CONTEXT).code}
 const request: StudyDetailRequest={requestId:'request-1',id:'1',source:'filtered_complex',complexId:'10001',applicationStatuses:['BEFORE_APPLICATION','APPLYING']}
 const show={type:'success' as const, requestId:request.requestId,id:'1',status:'APPLYING'}
 const open=(state:ExperimentState, origin:Partial<StudyDetailRequest>={})=>studyReducer(state,{type:'request-detail',...request,...origin})
 describe('study measurement',()=>{
+  it('starts collection only with a versioned consent and restores that consent',()=>{
+    const initial=initialState('data-v2','session')
+    expect(initial.consent).toBeNull()
+    expect(studyReducer(initial,{type:'accept-consent',acceptedAt:'not-a-date'})).toBe(initial)
+    const accepted=consented()
+    expect(accepted).toMatchObject({step:'warmup',consent:{version:CONSENT_VERSION,acceptedAt:'2026-10-15T00:00:00.000Z'}})
+    expect(restoreState(JSON.stringify(accepted),'data-v2')?.consent).toEqual(accepted.consent)
+    expect(restoreState(JSON.stringify({...accepted,consent:null}),'data-v2')).toBeNull()
+    expect(restoreState(JSON.stringify({...accepted,consent:{...accepted.consent,version:'previous'}}),'data-v2')).toBeNull()
+    expect(restoreState(JSON.stringify({...accepted,consent:{...accepted.consent,acceptedAt:'2026-02-30T00:00:00.000Z'}}),'data-v2')).toBeNull()
+    expect(restoreState(JSON.stringify(initial),'data-v2')?.consent).toBeNull()
+    expect(studyReducer(accepted,{type:'accept-consent',acceptedAt:'2026-10-16T00:00:00.000Z'})).toBe(accepted)
+  })
+  it('restores hint history, snapshots context and rejects inconsistent records',()=>{
+    const context={...EMPTY_HINT_CONTEXT}
+    let state=studyReducer(start(),{type:'tick',milliseconds:15_000})
+    state=studyReducer(state,{...help,context})
+    context.statusFiltered=true
+    expect(state.trials.old.hintOpens[0].context.statusFiltered).toBe(false)
+    expect(restoreState(JSON.stringify(state),'data-v2')?.trials.old.hintOpens).toEqual(state.trials.old.hintOpens)
+    const record=state.trials.old.hintOpens[0]
+    for (const changes of [{activeElapsedMs:15_001},{activeElapsedMs:-1},{hintCode:'unknown'},{hintCode:'zoom_into_area'},
+      {context:{...record.context,mapView:'unknown'}},{mode:'unknown'}]) {
+      expect(restoreState(JSON.stringify({...state,trials:{...state.trials,old:{...state.trials.old,hintOpens:[{...record,...changes}]}}}),'data-v2')).toBeNull()
+    }
+    expect(restoreState(JSON.stringify({...state,trials:{...state.trials,old:{...state.trials.old,helpAtMs:0}}}),'data-v2')).toBeNull()
+    expect(restoreState(JSON.stringify({...state,trials:{...state.trials,old:{...state.trials.old,hintOpens:[]}}}),'data-v2')).toBeNull()
+    const completed=studyReducer(open(state),show)
+    expect(studyReducer(completed,help)).toBe(completed)
+  })
   it.each(['old-task','new-task'] as const)('does not measure the start modal for %s',step=>{
-    const pending=studyReducer(initialState('data-v2','session'),{type:'step',step})
+    const pending=studyReducer(consented(),{type:'step',step})
     expect(activeTrial(pending)).toBeNull()
     expect(studyReducer(pending,{type:'tick',milliseconds:70_000})).toEqual(pending)
     const restored=restoreState(JSON.stringify(pending),'data-v2')!
@@ -53,9 +86,12 @@ describe('study measurement',()=>{
     let state=start()
     state=studyReducer(state,{type:'tick',milliseconds:70_000})
     expect(state.trials.old).toMatchObject({helpAtMs:null,helpReason:null})
-    state=studyReducer(state,{type:'help',reason:'requested'})
+    state=studyReducer(state,help)
     state=studyReducer(state,{type:'tick',milliseconds:1000})
-    expect(studyReducer(state,{type:'help',reason:'requested'}).trials.old.helpAtMs).toBe(70000)
+    state=studyReducer(state,help)
+    expect(state.trials.old.helpAtMs).toBe(70000)
+    expect(state.trials.old.hintOpens.map(hint=>hint.activeElapsedMs)).toEqual([70000,71000])
+    expect(state.trials.new.hintOpens).toEqual([])
   })
   it('records one immediate rating after completion or skipping and freezes it during comparison',()=>{
     expect(studyReducer(start(),{type:'rate',value:5})).toEqual(start())
@@ -82,7 +118,9 @@ describe('study measurement',()=>{
     expect(state.trials.old).toMatchObject({outcome:'active',errors:1,retries:1,interrupted:true})
   })
   it('keeps embedded and external survey metadata identical, keyed by method not ordinal',()=>{
-    let state=start('new')
+    let state=studyReducer(start('new'),{type:'tick',milliseconds:15000})
+    const newHelp={...help,hintCode:selectStudyHint('new','complexes',EMPTY_HINT_CONTEXT).code}
+    state=studyReducer(studyReducer(state,newHelp),newHelp)
     state=studyReducer(studyReducer(open(state,{source:'announcement_pin'}),show),{type:'rate',value:5}) as typeof state
     const summary=makeSummary(state,'2026-10-14',false)
     const embedded=new URL(tallyUrl('abc',summary,true)), external=new URL(tallyUrl('abc',summary,false))
@@ -91,6 +129,10 @@ describe('study measurement',()=>{
     expect(external.searchParams.get('ease_new')).toBe('5')
     expect(external.searchParams.get('new_completion_source')).toBe('announcement_pin')
     expect(external.searchParams.get('question_version')).toBe('survey-v3')
+    expect(external.searchParams.get('old_help_open_count')).toBe('0')
+    expect(external.searchParams.get('new_help_open_count')).toBe('2')
+    expect(external.searchParams.get('new_help_at_ms')).toBe('15000')
+    expect([...external.searchParams].length).toBe(36)
     expect(parseTallyEvent('not json','abc')).toBeNull()
     expect(parseTallyEvent({event:'Tally.FormSubmitted',payload:{formId:'other',id:'1'}},'abc')).toBeNull()
     expect(parseTallyEvent({event:'Tally.FormSubmitted',payload:{formId:'abc',id:'1'}},'abc')).toEqual({event:'Tally.FormSubmitted',id:'1'})

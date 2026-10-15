@@ -1,7 +1,9 @@
 import { useLayoutEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { Button } from '../design-system/components/Button'
+import { StudyPinLegend } from './StudyPinLegend'
 
-export interface StudyTip { target: string; title: string; text: string; pinLegend?: boolean }
+export interface StudyTip { target: string; title: string; text: string; pinLegend?: boolean; portalTarget?: string }
 
 interface Props {
   tip: StudyTip
@@ -21,11 +23,17 @@ interface Placement {
 }
 
 /** Keep the explanation next to the actual visible control, including mobile scrollable filters. */
-export function StudySpotlight({tip,index,total,label,nextLabel,onPrevious,onNext,onClose,closeLabel='방법 안내 닫기',onTargetActivate}: Props) {
+export function StudySpotlight(props: Props) {
+  if (props.tip.pinLegend) return <StudyPinLegend {...props} title={props.tip.title} text={props.tip.text} />
+  return <AnchoredStudySpotlight {...props} />
+}
+
+function AnchoredStudySpotlight({tip,index,total,label,nextLabel,onPrevious,onNext,onClose,closeLabel='방법 안내 닫기',onTargetActivate}: Props) {
   const activateRef = useRef(onTargetActivate)
   activateRef.current=onTargetActivate
   const card = useRef<HTMLElement>(null)
   const [placement,setPlacement] = useState<Placement | null>(null)
+  const [portalHost,setPortalHost] = useState<HTMLElement | null>(null)
   useLayoutEffect(() => {
     let selected: HTMLElement | null = null
     let originalDescription: string | null = null
@@ -43,6 +51,7 @@ export function StudySpotlight({tip,index,total,label,nextLabel,onPrevious,onNex
     }
     function measure() {
       if (disposed) return
+      setPortalHost(tip.portalTarget ? document.querySelector<HTMLElement>(tip.portalTarget) : null)
       const candidate = [...document.querySelectorAll<HTMLElement>(tip.target)].find(element => {
         const bounds=element.getBoundingClientRect()
         return bounds.width>0 && bounds.height>0 && !element.closest('[inert], [hidden]')
@@ -95,15 +104,15 @@ export function StudySpotlight({tip,index,total,label,nextLabel,onPrevious,onNex
       window.removeEventListener('resize',schedule);document.removeEventListener('scroll',schedule,true)
       document.removeEventListener('transitionrun',schedule,true);document.removeEventListener('transitionend',schedule,true)
     }
-  },[tip.target])
-  return <>
-    {placement?.frame && <div className="study-spotlight-frame" style={placement.frame} aria-hidden="true" />}
-    <section ref={card} className="study-tip" role="note" aria-label={label}
-      style={placement ? {left:placement.left,top:placement.top,width:placement.width,maxHeight:placement.maxHeight} : undefined}>
-      <div className="study-tip-heading"><span className="study-eyebrow">{label} · {index+1} / {total}</span>{onClose && <button onClick={onClose} aria-label={closeLabel}>×</button>}</div>
+  },[tip.target,tip.portalTarget])
+  const content = <section ref={card} className="study-tip" role="note" aria-label={label}
+      style={portalHost ? {position:'static',width:'100%',maxHeight:'none',margin:'16px 0 0',boxShadow:'none'} : placement ? {left:placement.left,top:placement.top,width:placement.width,maxHeight:placement.maxHeight} : undefined}>
+      <div className="study-tip-heading"><span className="study-eyebrow">{label} · {index+1} / {total}</span>{onClose && <button type="button" onClick={onClose} aria-label={closeLabel}>×</button>}</div>
       <h2>{tip.title}</h2><p id="study-tip-description">{tip.text}</p>
-      {tip.pinLegend && <ul className="study-pin-legend" aria-label="단지 핀 색상"><li data-status="upcoming">공고중</li><li data-status="applying">접수중</li><li data-status="none">진행 중 공고 없음</li><li data-status="selected">선택한 단지</li></ul>}
-      <div className="study-tip-actions">{total > 1 && <button disabled={index===0} onClick={onPrevious}>이전</button>}<Button onClick={onNext}>{nextLabel}</Button></div>
+      <div className="study-tip-actions">{total > 1 && <button type="button" disabled={index===0} onClick={onPrevious}>이전</button>}<Button onClick={onNext}>{nextLabel}</Button></div>
     </section>
+  return <>
+    {placement?.frame && !portalHost && <div className="study-spotlight-frame" style={placement.frame} aria-hidden="true" />}
+    {portalHost ? createPortal(content,portalHost) : content}
   </>
 }

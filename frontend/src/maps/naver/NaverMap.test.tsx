@@ -386,6 +386,24 @@ afterEach(() => {
 })
 
 describe('NaverMap', () => {
+  it('확대·축소 버튼 클릭만 실험 제어로 전달하고 자동 카메라 이동은 포함하지 않는다', async () => {
+    const fakeSdk = createFakeSdk()
+    loadNaverMapsSdkMock.mockResolvedValue(fakeSdk.maps)
+    const onZoomControl = vi.fn()
+    const { container, rerender } = render(<NaverMap representation="INDIVIDUAL" markers={[]} onZoomControl={onZoomControl} />)
+    await screen.findByRole('button', { name: '지도 확대' })
+    const surface = container.querySelector('.map-surface')
+    if (!surface) throw new Error('지도 영역 없음')
+    fireEvent.wheel(surface)
+    fireEvent.pointerDown(surface)
+    rerender(<NaverMap representation="INDIVIDUAL" markers={[]} onZoomControl={onZoomControl}
+      cameraTarget={{ latitude: 35.18, longitude: 129.07, zoom: 13 }} />)
+    act(() => fakeSdk.emitIdle())
+    expect(onZoomControl).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: '지도 확대' }))
+    fireEvent.click(screen.getByRole('button', { name: '지도 축소' }))
+    expect(onZoomControl.mock.calls).toEqual([['in'], ['out']])
+  })
   it('직접 조작을 알리고 프로그램 이동과 idle은 사용자 조작으로 알리지 않는다', async () => {
     const fakeSdk = createFakeSdk()
     loadNaverMapsSdkMock.mockResolvedValue(fakeSdk.maps)

@@ -25,6 +25,7 @@ interface GroupState {
 const searchTypes: readonly SearchType[] = ['REGION', 'SUBWAY_STATION', 'ANNOUNCEMENT', 'COMPLEX']
 
 export interface IntegratedSearchProps {
+  readonly onSearchRequested?: () => void
   readonly onActiveChange?: (active: boolean) => void
   readonly onSelect: (item: SearchResultItem) => void
   readonly repository?: IntegratedSearchRepository
@@ -32,6 +33,7 @@ export interface IntegratedSearchProps {
 }
 
 export function IntegratedSearch({
+  onSearchRequested,
   onActiveChange,
   onSelect,
   repository = integratedSearchRepository,
@@ -121,6 +123,7 @@ export function IntegratedSearch({
             {searchTypes.map((type) => (
               <SearchGroup
                 key={type}
+                onSearchRequested={type === 'REGION' ? onSearchRequested : undefined}
                 measurement={measurement}
                 onSelect={(item) => {
                   closeReason.current = 'selection'
@@ -142,12 +145,14 @@ export function IntegratedSearch({
 }
 
 export function SearchGroup({
+  onSearchRequested,
   onSelect,
   query,
   repository,
   type,
   measurement: suppliedMeasurement,
 }: {
+  readonly onSearchRequested?: () => void
   readonly onSelect: (item: SearchResultItem) => void
   readonly query: string
   readonly repository: IntegratedSearchRepository
@@ -162,6 +167,8 @@ export function SearchGroup({
     error: null, hasNext: false, items: [], kind: 'loading', totalCount: null,
   })
   const headingId = useId()
+  const onSearchRequestedRef = useRef(onSearchRequested)
+  onSearchRequestedRef.current = onSearchRequested
   const label = typeLabel(type)
 
   useEffect(() => {
@@ -169,6 +176,7 @@ export function SearchGroup({
     setState((current) => ({ ...current, error: null, kind: 'loading' }))
     const requestId = createAnalyticsId()
     const timer = window.setTimeout(() => {
+      if(page === 0 && retryRevision === 0) onSearchRequestedRef.current?.()
       if (page === 0) measurement.start(type)
       else captureProductEvent('search_more_requested', { ...measurement.properties, result_type: type.toLowerCase(), request_id: requestId, page })
       repository.search(query, false, page, controller.signal, type)

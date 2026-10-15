@@ -1,6 +1,15 @@
 import { describe, expect, it } from 'vitest'
-import { EMPTY_HINT_CONTEXT, studyHint } from './studyHints'
+import { EMPTY_HINT_CONTEXT, selectStudyHint, studyHint } from './studyHints'
 describe('current situation hints',()=>{
+  it('returns a stable code from the same decision as the displayed text',()=>{
+    const context={...EMPTY_HINT_CONTEXT,statusFiltered:true,detail:'complex-active' as const,complexFromFilteredPin:true}
+    const selected=selectStudyHint('old','complexes',context)
+    expect(selected.code).toBe('open_complex_announcement')
+    expect(selected.text).toBe(studyHint('old','complexes',context))
+    expect(selectStudyHint('new','complexes',context).code).toBe('switch_to_announcement_map')
+    expect(selectStudyHint('new','announcements',{...context,choicesOpen:true}).code).toBe('choose_announcement')
+    expect(selectStudyHint('old','complexes',EMPTY_HINT_CONTEXT).code).toBe('apply_status_filter')
+  })
   it('never asks to open a nonexistent announcement',()=>{
     for(const method of ['old','new'] as const) {
       const hint=studyHint(method,method==='old'?'complexes':'announcements',{...EMPTY_HINT_CONTEXT,detail:'complex-empty'})

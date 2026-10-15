@@ -42,6 +42,51 @@ const BASE_FILTERS: ComplexSearchFilters = {
 }
 
 describe('ComplexFilterToolbar', () => {
+  it.each([1024, 375])('소개 단계에서 모집상태 창을 자동으로 보여 주되 조건과 클릭 기록은 바꾸지 않는다 (%i px)', (width) => {
+    vi.stubGlobal('innerWidth', width)
+    const onApply = vi.fn(), onStudyControl = vi.fn()
+    try {
+      const { rerender } = render(<ComplexFilterToolbar filters={{}} onApply={onApply}
+        onStudyControl={onStudyControl} previewTopic="applicationStatus" />)
+      const panel = screen.getByRole(width > 767 ? 'region' : 'dialog', { name: '모집상태 필터' })
+      expect(within(panel).getByRole('checkbox', { name: '공고중' })).not.toBeChecked()
+      expect(within(panel).getByRole('checkbox', { name: '접수중' })).not.toBeChecked()
+      expect(onApply).not.toHaveBeenCalled()
+      expect(onStudyControl).not.toHaveBeenCalled()
+      if (width <= 767) expect(panel.querySelector('[data-study-filter-guide-host]')).not.toBeNull()
+      rerender(<ComplexFilterToolbar filters={{}} onApply={onApply} onStudyControl={onStudyControl} />)
+      expect(screen.queryByRole(width > 767 ? 'region' : 'dialog', { name: '모집상태 필터' })).not.toBeInTheDocument()
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
+
+  it('필터 열기와 실제 즉시 적용을 기록하고 초기화는 적용과 중복 집계하지 않는다', () => {
+    const onStudyControl = vi.fn(), onApply = vi.fn()
+    const { rerender } = render(<ComplexFilterToolbar filters={{}} onApply={onApply} onStudyControl={onStudyControl} />)
+    fireEvent.click(screen.getByRole('button', { name: '모집상태 필터 열기' }))
+    fireEvent.click(screen.getByRole('checkbox', { name: '접수중' }))
+    expect(onStudyControl.mock.calls).toEqual([['filter_open'], ['filter_apply']])
+    expect(onApply).toHaveBeenLastCalledWith({ applicationStatuses: ['APPLYING'] })
+    rerender(<ComplexFilterToolbar filters={{ applicationStatuses: ['APPLYING'] }} onApply={onApply} onStudyControl={onStudyControl} />)
+    fireEvent.click(screen.getByRole('button', { name: '전체 필터 열기' }))
+    onStudyControl.mockClear()
+    fireEvent.click(screen.getByRole('button', { name: '전체 필터 초기화' }))
+    expect(onStudyControl.mock.calls).toEqual([['filter_reset']])
+    expect(onApply).toHaveBeenLastCalledWith({})
+  })
+
+  it('모바일 적용 버튼은 실제 적용 시 한 번만 기록한다', () => {
+    const onStudyControl = vi.fn(), onApply = vi.fn()
+    render(<ComplexFilterToolbar filters={{}} onApply={onApply} onStudyControl={onStudyControl} />)
+    fireEvent.click(screen.getByRole('button', { name: '모바일 모집상태 필터 열기' }))
+    const panel = screen.getByRole('dialog', { name: '모집상태 필터' })
+    fireEvent.click(within(panel).getByRole('checkbox', { name: '접수중' }))
+    expect(onStudyControl.mock.calls).toEqual([['filter_open']])
+    fireEvent.submit(within(panel).getByRole('form', { name: '단지 필터 조건' }))
+    expect(onStudyControl.mock.calls).toEqual([['filter_open'], ['filter_apply']])
+    expect(onApply).toHaveBeenCalledOnce()
+  })
   it.each(['desktop', 'mobile'])('%s 전체 배지는 선택 항목 수가 아닌 적용 중인 필터 종류 수를 표시한다', (mode) => {
     const { rerender } = renderToolbar({ filters: BASE_FILTERS })
     const name = mode === 'desktop' ? '전체 필터 열기' : '모바일 전체 필터 열기'

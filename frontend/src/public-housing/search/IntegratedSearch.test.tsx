@@ -1,5 +1,6 @@
 import type { NotificationInterestRepository } from '../interest/notificationInterestRepository'
 import { MemoryRouter } from 'react-router'
+import { StrictMode } from 'react'
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import { IntegratedSearch } from './IntegratedSearch.tsx'
@@ -16,6 +17,52 @@ vi.mock('../regions/regionBoundaryCatalog.ts', () => ({
 }))
 
 describe('IntegratedSearch', () => {
+  it('실행된 검색만 200ms 뒤 한 번 알리고 취소한 입력·4개 결과 그룹·StrictMode로 중복 집계하지 않는다', async () => {
+    vi.useFakeTimers()
+    try {
+      const repository = repositoryWith(response([], [], [])), onSearchRequested = vi.fn()
+      render(<StrictMode><IntegratedSearch repository={repository} onSelect={vi.fn()} onSearchRequested={onSearchRequested} /></StrictMode>)
+      const input = screen.getByRole('searchbox')
+      fireEvent.change(input, { target: { value: '서' } })
+      await act(() => vi.advanceTimersByTimeAsync(200))
+      expect(onSearchRequested).not.toHaveBeenCalled()
+      fireEvent.change(input, { target: { value: '서울' } })
+      await act(() => vi.advanceTimersByTimeAsync(199))
+      expect(onSearchRequested).not.toHaveBeenCalled()
+      fireEvent.change(input, { target: { value: '서울역' } })
+      await act(() => vi.advanceTimersByTimeAsync(200))
+      expect(repository.search).toHaveBeenCalledTimes(4)
+      expect(onSearchRequested.mock.calls).toEqual([[]])
+      fireEvent.change(input, { target: { value: '' } })
+      fireEvent.change(input, { target: { value: '부산' } })
+      await act(() => vi.advanceTimersByTimeAsync(200))
+      expect(onSearchRequested.mock.calls).toEqual([[], []])
+    } finally { vi.useRealTimers() }
+  })
+
+  it('검색 재시도와 더보기는 새 검색 요청으로 중복 집계하지 않는다', async () => {
+    vi.useFakeTimers()
+    try {
+      let regionRequests = 0
+      const search = vi.fn<IntegratedSearchRepository['search']>().mockImplementation(async (_query, _active, page, _signal, type) => {
+        if (type !== 'REGION') return response([], [], [])
+        regionRequests++
+        if (regionRequests === 1) return response([], [], [], [{type:'REGION',message:'검색을 다시 시도해 주세요.'}])
+        return {...response([], [], [item('REGION', '11', '서울특별시')]),hasNext:page === 0}
+      })
+      const onSearchRequested = vi.fn()
+      render(<IntegratedSearch repository={{search}} onSelect={vi.fn()} onSearchRequested={onSearchRequested} />)
+      fireEvent.change(screen.getByRole('searchbox'), {target:{value:'서울'}})
+      await act(() => vi.advanceTimersByTimeAsync(200))
+      expect(onSearchRequested).toHaveBeenCalledOnce()
+      fireEvent.click(screen.getByRole('button', {name:'지역 다시 시도'}))
+      await act(() => vi.advanceTimersByTimeAsync(0))
+      fireEvent.click(screen.getByRole('button', {name:/^지역 더보기/}))
+      await act(() => vi.advanceTimersByTimeAsync(0))
+      expect(regionRequests).toBe(3)
+      expect(onSearchRequested).toHaveBeenCalledOnce()
+    } finally { vi.useRealTimers() }
+  })
   it('네이버 위치 응답을 해석해 최대 5개 지하철역을 표시하고 더보기 없이 지도 선택으로 전달한다', async () => {
     const onSelect = vi.fn()
     const fetcher = vi.fn<typeof fetch>().mockImplementation(async (input) => {

@@ -2,6 +2,14 @@ import type { MapMode, StudyAnnouncement } from './data'
 
 export type StudyPath = 'filter' | 'announcement_map' | 'search' | 'announcement_list' | 'complex' | 'recent'
 export type CompletionSource = 'filtered_complex' | 'announcement_pin'
+export const STUDY_CONTROLS = [
+  'mode_complexes', 'mode_announcements', 'filter_open', 'filter_apply', 'filter_reset',
+  'complex_pin', 'announcement_pin', 'aggregate_pin', 'complex_list_item', 'announcement_list_item',
+  'search_result', 'announcement_choice', 'detail_close', 'detail_back', 'announcement_list_toggle',
+  'recent_list_toggle', 'search_submit', 'map_zoom_in', 'map_zoom_out', 'tour_previous', 'tour_next',
+  'explore_more', 'survey_start',
+] as const
+export type StudyControl = typeof STUDY_CONTROLS[number]
 export interface StudyDetailRequest {
   requestId: string
   id: string
@@ -18,6 +26,7 @@ export interface StudyHintContext {
   listOpen: boolean
 }
 export type ExplorerStudyEvent =
+  | { type: 'control'; control: StudyControl }
   | { type: 'context'; context: StudyHintContext }
   | { type: 'ready'; ready: boolean }
   | { type: 'error'; surface: 'map' | 'data' | 'detail' }

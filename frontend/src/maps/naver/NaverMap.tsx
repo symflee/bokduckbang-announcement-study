@@ -158,6 +158,7 @@ export default function NaverMap({
   onMarkerSelect,
   onTransitionInterrupt,
   onUserInteraction,
+  onZoomControl,
   onViewportChange,
   regionBoundary,
   representation,
@@ -753,12 +754,12 @@ export default function NaverMap({
       {isLoading && <MapLoading />}
       {isReady && (
         <div className={styles.zoomControls} role="group" aria-label="지도 확대·축소">
-          <button type="button" aria-label="지도 확대" title="지도 확대" onClick={() => changeZoom(1)}>
+          <button type="button" aria-label="지도 확대" title="지도 확대" onClick={() => {onZoomControl?.('in');changeZoom(1)}}>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
               <path d="M5 12h14M12 5v14" />
             </svg>
           </button>
-          <button type="button" aria-label="지도 축소" title="지도 축소" onClick={() => changeZoom(-1)}>
+          <button type="button" aria-label="지도 축소" title="지도 축소" onClick={() => {onZoomControl?.('out');changeZoom(-1)}}>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
               <path d="M5 12h14" />
             </svg>

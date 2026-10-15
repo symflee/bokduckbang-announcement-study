@@ -936,6 +936,7 @@ export function PublicHousingExplorer({
   ])
 
   const openComplexDetail = useCallback((complexId: string, entryPoint: DetailEntryPoint = 'list') => {
+    if(entryPoint === 'list') studyRef.current?.onEvent({type:'control',control:'complex_list_item'})
     studyComplexSelection.current=null
     pendingDetailCameraRef.current = {
       id: complexId,
@@ -946,6 +947,7 @@ export function PublicHousingExplorer({
   }, [openDetail])
 
   const openComplexMarker = useCallback((complexId: string) => {
+    studyRef.current?.onEvent({type:'control',control:'complex_pin'})
     studyComplexSelection.current = studyRef.current?.mode === 'complexes'
       ? {id:complexId, applicationStatuses:[...(complexFilters.applicationStatuses ?? [])]} : null
     pendingDetailCameraRef.current = null
@@ -955,6 +957,7 @@ export function PublicHousingExplorer({
   }, [openDetail, complexFilters.applicationStatuses])
 
   const openAnnouncementDetail = useCallback((announcementId: string, entryPoint: DetailEntryPoint = 'list', pinComplexId?:string) => {
+    if(entryPoint === 'list') studyRef.current?.onEvent({type:'control',control:'announcement_list_item'})
     pendingDetailCameraRef.current = null
     const selected=studyComplexSelection.current
     const fromFilteredComplex=entryPoint === 'detail' && selected && complexDetail.complexId === selected.id
@@ -966,7 +969,7 @@ export function PublicHousingExplorer({
     openDetail('announcements', announcementId, entryPoint, origin)
   }, [openDetail, complexDetail.complexId])
 
-  const closeDetail = useCallback(() => {
+  const clearDetail = useCallback(() => {
     setStudyDetailRequest(null)
     studyComplexSelection.current=null
     trackDetailAction('detail_closed')
@@ -995,6 +998,11 @@ export function PublicHousingExplorer({
     trackDetailAction,
   ])
 
+  const closeDetail = useCallback(() => {
+    studyRef.current?.onEvent({type:'control',control:'detail_close'})
+    clearDetail()
+  }, [clearDetail])
+
   const selectResultTab = useCallback((tab: ResultList) => {
     closeStreetView('USER_CLOSED', false)
     mobileDetailListModeRef.current = null
@@ -1009,6 +1017,7 @@ export function PublicHousingExplorer({
   }, [integratedSearchActive, closeStreetView])
 
   const returnToDetail = useCallback(() => {
+    studyRef.current?.onEvent({type:'control',control:'detail_back'})
     trackDetailAction('detail_back_used')
     const previous = detailReturnFocusStack.at(-1)
     if (!previous) {
@@ -1091,6 +1100,7 @@ export function PublicHousingExplorer({
     if (clusterTransitionRef.current) {
       return
     }
+    studyRef.current?.onEvent({type:'control',control:'aggregate_pin'})
     captureProductEvent('map_marker_selected', { marker_type: 'aggregate', stage: marker.groupKey.split(':')[0], result_count: marker.uniqueComplexCount })
     clusterTransitionRef.current = true
     transitionWaitingForIdleRef.current = true
@@ -1179,6 +1189,7 @@ export function PublicHousingExplorer({
   }, [location, navigate, closeStreetView, cancelCurrentLocation])
 
   const handleIntegratedSearchSelect = useCallback((item: SearchResultItem) => {
+    studyRef.current?.onEvent({type:'control',control:'search_result'})
     studyRef.current?.onEvent({type: 'path', path: 'search'})
     cancelCurrentLocation()
     if (item.type === 'COMPLEX') {
@@ -1323,6 +1334,7 @@ export function PublicHousingExplorer({
         }) : markers,
         onMarkerHighlight: setMarkerHighlightedComplexId,
         onMarkerSelect: study?.mode === 'announcements' ? (id) => {
+          study.onEvent({type:'control',control:'announcement_pin'})
           study.onEvent({type: 'path', path: 'announcement_map'})
           const choices = study.announcements[id] ?? []
           if (choices.length === 1) openAnnouncementDetail(choices[0].id, 'map', id)
@@ -1414,7 +1426,7 @@ export function PublicHousingExplorer({
         <div className="housing-results__tabs">
           {study && <>
             <button id="study-complex-tab" type="button" className={study.mode === 'complexes' ? 'is-active' : ''} aria-pressed={study.mode === 'complexes'} onClick={() => { collapseResults(); study.onModeChange('complexes') }}><span className="study-nav-icon" aria-hidden="true">▦</span><span>단지지도</span></button>
-            {study.newModeAvailable && <button id="study-announcement-tab" type="button" className={`${study.mode === 'announcements' ? 'is-active' : ''} ${study.guideAnnouncementTab ? 'is-study-guided' : ''}`} aria-describedby={study.guideAnnouncementTab ? 'study-route-guidance' : undefined} aria-pressed={study.mode === 'announcements'} onClick={() => { if (study.guideAnnouncementTab) closeDetail(); collapseResults(); study.onEvent({type:'path', path:'announcement_map'}); study.onModeChange('announcements') }}><span className="study-nav-icon" aria-hidden="true">▤</span><span>공고지도</span></button>}
+            {study.newModeAvailable && <button id="study-announcement-tab" type="button" className={`${study.mode === 'announcements' ? 'is-active' : ''} ${study.guideAnnouncementTab ? 'is-study-guided' : ''}`} aria-describedby={study.guideAnnouncementTab ? 'study-route-guidance' : undefined} aria-pressed={study.mode === 'announcements'} onClick={() => { if (study.guideAnnouncementTab) clearDetail(); collapseResults(); study.onEvent({type:'path', path:'announcement_map'}); study.onModeChange('announcements') }}><span className="study-nav-icon" aria-hidden="true">▤</span><span>공고지도</span></button>}
           </>}
 
           {mobile && !study && <button id="mobile-complex-list-trigger" type="button" aria-controls="complex-results-panel"
@@ -1433,6 +1445,7 @@ export function PublicHousingExplorer({
             aria-expanded={showListPage && activeResultTab === 'announcements'}
             className={showListPage && activeResultTab === 'announcements' ? 'is-active' : undefined}
             onClick={() => {
+              studyRef.current?.onEvent({type:'control',control:'announcement_list_toggle'})
               if (showListPage && activeResultTab === 'announcements') collapseResults()
               else { studyRef.current?.onEvent({type:'path', path:'announcement_list'}); prepareListEntry('navigation'); selectResultTab('announcements') }
             }}>
@@ -1443,6 +1456,7 @@ export function PublicHousingExplorer({
             aria-expanded={showListPage && activeResultTab === 'recent'}
             className={showListPage && activeResultTab === 'recent' ? 'is-active' : undefined}
             onClick={() => {
+              studyRef.current?.onEvent({type:'control',control:'recent_list_toggle'})
               if (showListPage && activeResultTab === 'recent') collapseResults()
               else { studyRef.current?.onEvent({type:'path', path:'recent'}); prepareListEntry('navigation'); selectResultTab('recent') }
             }}>
@@ -1454,9 +1468,10 @@ export function PublicHousingExplorer({
         </div>
       </nav>
       <div className="housing-browse-panel">
-        <div className="housing-search-overlay" ref={searchOverlayRef}>
+        <div className="housing-search-overlay" ref={searchOverlayRef} data-study-sensitive={study ? '' : undefined}>
           <IntegratedSearch
             key={searchRevision}
+            onSearchRequested={study ? ()=>studyRef.current?.onEvent({type:'control',control:'search_submit'}) : undefined}
             onActiveChange={handleSearchActiveChange}
             onSelect={handleIntegratedSearchSelect}
             repository={searchRepository}
@@ -1637,10 +1652,12 @@ export function PublicHousingExplorer({
       {study && studyChoices && <StudyAnnouncementChoices complexId={studyChoices}
         announcements={study.announcements[studyChoices] ?? []}
         onClose={() => setStudyChoices(null)}
-        onSelect={id => {setStudyChoices(null); openAnnouncementDetail(id, 'map', studyChoices)}} />}
+        onSelect={id => {study.onEvent({type:'control',control:'announcement_choice'});setStudyChoices(null); openAnnouncementDetail(id, 'map', studyChoices)}} />}
       <main ref={mapWorkspaceRef} className="housing-map-workspace">
         <div className="housing-map-filter" hidden={streetView.active} inert={streetView.active}>
           <ComplexFilterToolbar key={tourStep ?? 'explore'}
+            previewTopic={tourStep === undefined ? undefined : SERVICE_TOUR[tourStep].filterPreview}
+            onStudyControl={study ? control=>studyRef.current?.onEvent({type:'control',control}) : undefined}
             filters={complexFilters}
             onApply={applyComplexFilters}
             regionRepository={regionRepository}
@@ -1648,7 +1665,9 @@ export function PublicHousingExplorer({
           />
         </div>
         <div className="housing-map-base" inert={streetView.active} aria-hidden={streetView.active || undefined}>
-          <NaverMap {...naverMapProps} onAvailabilityChange={study ? studyMapAvailability : undefined} regionBoundary={boundaryState.boundary} />
+          <NaverMap {...naverMapProps} onAvailabilityChange={study ? studyMapAvailability : undefined}
+            onZoomControl={study ? direction=>studyRef.current?.onEvent({type:'control',control:direction==='in'?'map_zoom_in':'map_zoom_out'}) : undefined}
+            regionBoundary={boundaryState.boundary} />
           {!study && <CurrentLocationControl state={currentLocationState} onLocate={requestCurrentLocation} />}
           <div className="housing-map-feedback" hidden={streetView.active}><HousingMapRequestFeedback errorMessage={serverMapState.errorMessage}
             onRetry={() => { studyRef.current?.onEvent({type:'retry'}); captureProductEvent('exploration_retry_clicked', { surface: 'map_results' }); return retryServerMap() }} status={serverMapState.status} /></div>

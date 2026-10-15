@@ -16,6 +16,7 @@ export function tallyFields(summary:ExperimentSummary): Record<string,string> {
     fields[`${key}_unaided`] = String(trial.outcome === 'success' && trial.helpAtMs === null)
     fields[`${key}_help`] = String(trial.helpAtMs !== null)
     fields[`${key}_help_reason`] = trial.helpReason ?? ''
+    fields[`${key}_help_open_count`] = String(trial.hintOpens.length)
     fields[`${key}_elapsed_ms`] = String(Math.round(trial.elapsedMs))
     fields[`${key}_help_at_ms`] = trial.helpAtMs === null ? '' : String(Math.round(trial.helpAtMs))
     fields[`${key}_paths`] = trial.paths.join(',')

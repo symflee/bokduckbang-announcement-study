@@ -37,12 +37,16 @@ export interface ComplexFilterToolbarProps {
   readonly onApply: (filters: ComplexSearchFilters) => void
   readonly regionRepository?: PublicHousingRegionRepository
   readonly resultCountLabel?: string
+  readonly previewTopic?: 'applicationStatus'
+  readonly onStudyControl?: (control: 'filter_open' | 'filter_apply' | 'filter_reset') => void
 }
 
 export function ComplexFilterToolbar({
   filters,
   onApply,
   regionRepository = publicHousingRegionRepository,
+  previewTopic,
+  onStudyControl,
 }: ComplexFilterToolbarProps) {
   const filtersSignature = searchFiltersSignature(filters)
   const [openTopic, setOpenTopic] = useState<DesktopFilterTopic | null>(null)
@@ -93,6 +97,46 @@ export function ComplexFilterToolbar({
   const triggerRefs = useRef<
     Partial<Record<DesktopFilterTopic, HTMLButtonElement>>
   >({})
+  const previewFiltersRef = useRef(filters)
+  previewFiltersRef.current = filters
+  const previousPreviewRef = useRef<typeof previewTopic>(undefined)
+
+  useEffect(() => {
+    if (!previewTopic) {
+      if (previousPreviewRef.current) {
+        setOpenTopic(null)
+        setMobileSheetOpen(false)
+        setMobileInitialTopic(null)
+      }
+      previousPreviewRef.current = undefined
+      return
+    }
+    previousPreviewRef.current = previewTopic
+    let mobilePreview: boolean | undefined
+    const showPreview = () => {
+      const mobile = window.innerWidth <= 767
+      if (mobilePreview === mobile) return
+      mobilePreview = mobile
+      setErrorMessage(null)
+      if (mobile) {
+        mobileTriggerRef.current = rootRef.current?.querySelector<HTMLButtonElement>(
+          `[aria-controls="mobile-complex-filter-sheet"][data-study-filter="${previewTopic}"]`,
+        ) ?? null
+        mobileOpenedFiltersSignatureRef.current = searchFiltersSignature(previewFiltersRef.current)
+        setMobileDraftFilters(previewFiltersRef.current)
+        setOpenTopic(null)
+        setMobileInitialTopic(previewTopic)
+        setMobileSheetOpen(true)
+      } else {
+        setMobileSheetOpen(false)
+        setMobileInitialTopic(null)
+        setOpenTopic(previewTopic)
+      }
+    }
+    showPreview()
+    window.addEventListener('resize', showPreview)
+    return () => window.removeEventListener('resize', showPreview)
+  }, [previewTopic])
 
   useEffect(() => {
     if (previousFiltersSignatureRef.current === filtersSignature) return
@@ -346,6 +390,7 @@ export function ComplexFilterToolbar({
     topic: DesktopFilterTopic | null,
     trigger: HTMLButtonElement,
   ) {
+    onStudyControl?.('filter_open')
     mobileTriggerRef.current = trigger
     mobileOpenedFiltersSignatureRef.current = filtersSignature
     setOpenTopic(null)
@@ -377,11 +422,13 @@ export function ComplexFilterToolbar({
     }
     measurement.apply(next, 'submit')
     measurement.reason('apply')
+    onStudyControl?.('filter_apply')
     onApply(next)
     closeMobileSheet('apply')
   }
 
   function resetMobileSheet() {
+    onStudyControl?.('filter_reset')
     measurement.reset('all', 'applied')
     setErrorMessage(null)
     mobileResetFocusPendingRef.current = true
@@ -431,10 +478,12 @@ export function ComplexFilterToolbar({
     if (nextSignature === filtersSignature) return
     quickAppliedSignatureRef.current = nextSignature
     if (mobileSheetOpen) mobileOpenedFiltersSignatureRef.current = nextSignature
+    if (mode !== 'reset') onStudyControl?.('filter_apply')
     onApply(next)
   }
 
   function resetAllFilters() {
+    onStudyControl?.('filter_reset')
     measurement.reset('all', 'applied')
     setErrorMessage(null)
     setAllInitialFilters({})
@@ -504,6 +553,7 @@ export function ComplexFilterToolbar({
                       onFocus={() => setRovingTopic(topic)}
                       onClick={() => {
                         measurement.reason('toggle')
+                        if (!expanded) onStudyControl?.('filter_open')
                         setErrorMessage(null)
                         if (topic === 'all') {
                           setAllInitialFilters(filters)
@@ -546,6 +596,7 @@ export function ComplexFilterToolbar({
             id={`complex-${openTopic}-filter-popover`}
             aria-labelledby={headingId}
             data-topic={openTopic}
+            data-study-filter-panel={openTopic}
             style={{
               '--popover-anchor-x': `${popoverPlacement.anchorX}px`,
               '--popover-left': `${popoverPlacement.left}px`,
@@ -656,6 +707,7 @@ export function ComplexFilterToolbar({
             role="dialog"
             aria-modal="true"
             aria-labelledby="mobile-complex-filter-heading"
+            data-study-filter-panel={mobileInitialTopic ?? undefined}
           >
             <form
               key={`mobile-${mobileFormRevision}-${searchFiltersSignature(mobileDraftFilters)}`}
@@ -722,6 +774,7 @@ export function ComplexFilterToolbar({
                     {errorMessage}
                   </p>
                 )}
+                {previewTopic && mobileInitialTopic === previewTopic && <div data-study-filter-guide-host />}
               </div>
 
               {!mobileAppliesImmediately && <div className={styles.mobileFooter}>

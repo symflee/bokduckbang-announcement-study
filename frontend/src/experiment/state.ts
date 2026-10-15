@@ -1,7 +1,10 @@
 import { SERVICE_TOUR } from './serviceTour'
-import type { CompletionSource, StudyDetailRequest, StudyPath } from './explorerStudy'
+import type { CompletionSource, StudyDetailRequest, StudyHintContext, StudyPath } from './explorerStudy'
+import type { MapMode } from './data'
+import { selectStudyHint, type StudyHintCode } from './studyHints'
 
-export const EXPERIMENT_VERSION = 'announcement-map-v8'
+export const EXPERIMENT_VERSION = 'announcement-map-v9'
+export const CONSENT_VERSION = 'study-consent-v1'
 export const QUESTION_VERSION = 'survey-v3'
 export type StudyStep = 'intro' | 'warmup' | 'explore' | 'briefing' | 'old-task' | 'new-task' | 'compare' | 'survey' | 'complete'
 const INTRODUCED_STEPS = ['old-task', 'new-task'] as const
@@ -13,11 +16,19 @@ export type TrialKey = 'old' | 'new'
 export type MethodOrder = readonly ['old', 'new']
 export type EaseRating = 1 | 2 | 3 | 4 | 5 | 'unsure'
 export const METHOD_NAMES: Record<TrialKey, string> = {old:'필터로 찾기', new:'공고지도로 찾기'}
+export interface StudyConsent { version: typeof CONSENT_VERSION; acceptedAt: string }
+export interface HintOpenRecord {
+  activeElapsedMs: number
+  hintCode: StudyHintCode
+  mode: MapMode
+  context: StudyHintContext
+}
 export interface TrialResult {
   outcome: 'active' | 'success' | 'skipped'
   elapsedMs: number
   helpAtMs: number | null
   helpReason: 'requested' | null
+  hintOpens: HintOpenRecord[]
   paths: StudyPath[]
   announcementId: string | null
   requestedDetail: StudyDetailRequest | null
@@ -30,6 +41,7 @@ export interface TrialResult {
 }
 export interface ExperimentState {
   version: typeof EXPERIMENT_VERSION
+  consent: StudyConsent | null
   datasetVersion: string
   sessionId: string
   order: MethodOrder
@@ -53,12 +65,12 @@ export interface ExperimentSummary {
   new: TrialResult
 }
 export function emptyTrial(): TrialResult {
-  return {outcome:'active', elapsedMs:0, helpAtMs:null, helpReason:null,  paths:[], announcementId:null,
+  return {outcome:'active', elapsedMs:0, helpAtMs:null, helpReason:null, hintOpens:[], paths:[], announcementId:null,
     requestedDetail:null, completionSource:null, wrongRoute:false, ease:null, interrupted:false, errors:0, retries:0}
 }
 export function initialState(datasetVersion: string, sessionId: string, test = false): ExperimentState {
   const order: MethodOrder = ['old','new']
-  return {version:EXPERIMENT_VERSION, datasetVersion, sessionId, order, step:'intro', stageStarted:true, tourStep:0,
+  return {version:EXPERIMENT_VERSION, consent:null, datasetVersion, sessionId, order, step:'intro', stageStarted:true, tourStep:0,
     trials:{old:emptyTrial(), new:emptyTrial()}, test, responseId:null}
 }
 export function activeTrial(state:ExperimentState): TrialKey | null {
@@ -69,11 +81,12 @@ export function isEaseRating(value:unknown): value is EaseRating {
   return value === 'unsure' || typeof value === 'number' && Number.isInteger(value) && value >= 1 && value <= 5
 }
 export type StudyAction =
+  | {type:'accept-consent'; acceptedAt:string}
   | {type:'step'; step:StudyStep}
   | {type:'begin-step'}
   | {type:'tour-step'; index:number}
   | {type:'tick'; milliseconds:number}
-  | {type:'help'; reason:'requested'}
+  | {type:'help'; reason:'requested'; mode:MapMode; context:StudyHintContext; hintCode:StudyHintCode}
   | {type:'rate'; value:EaseRating}
   | {type:'path'; path:StudyPath}
   | ({type:'request-detail'} & StudyDetailRequest)
@@ -81,6 +94,8 @@ export type StudyAction =
   | {type:'skip'} | {type:'error'} | {type:'retry'}
   | {type:'submitted'; responseId:string}
 export function studyReducer(state:ExperimentState, action:StudyAction): ExperimentState {
+  if (action.type === 'accept-consent') return state.step === 'intro' && validConsentTime(action.acceptedAt)
+    ? {...state, consent:{version:CONSENT_VERSION,acceptedAt:action.acceptedAt}, step:'warmup', stageStarted:true} : state
   if (action.type === 'step') return {...state, step:action.step, stageStarted:!hasStepIntroduction(action.step)}
   if (action.type === 'tour-step') return state.step === 'warmup' ? {...state, tourStep:Math.max(0,Math.min(SERVICE_TOUR.length-1,action.index))} : state
   if (action.type === 'begin-step') return state.stageStarted ? state : {...state, stageStarted:true}
@@ -98,7 +113,9 @@ export function studyReducer(state:ExperimentState, action:StudyAction): Experim
     case 'tick':
       if (!Number.isFinite(action.milliseconds) || action.milliseconds <= 0) return state
       next = {...trial, elapsedMs:trial.elapsedMs+action.milliseconds}; break
-    case 'help': next = trial.helpAtMs === null ? {...trial, helpAtMs:trial.elapsedMs, helpReason:'requested'} : trial; break
+    case 'help':
+      next = {...trial, helpAtMs:trial.helpAtMs ?? trial.elapsedMs, helpReason:'requested',
+        hintOpens:[...trial.hintOpens,{activeElapsedMs:trial.elapsedMs,hintCode:action.hintCode,mode:action.mode,context:{...action.context}}]}; break
     case 'path': next = {...trial, paths:[...new Set([...trial.paths, action.path])]}; break
     case 'request-detail': {
       const {requestId,id,source,complexId,applicationStatuses}=action
@@ -132,11 +149,42 @@ function validRequest(value:unknown): boolean {
   return typeof v.requestId === 'string' && typeof v.id === 'string' && ['filtered_complex','announcement_pin','other'].includes(String(v.source))
     && (v.complexId === null || typeof v.complexId === 'string') && Array.isArray(v.applicationStatuses) && v.applicationStatuses.every(s=>typeof s === 'string')
 }
-function validTrial(value:unknown): value is TrialResult {
+function validConsentTime(value:unknown): value is string {
+  return typeof value === 'string' && Number.isFinite(Date.parse(value)) && new Date(value).toISOString() === value
+}
+function validConsent(value:unknown): value is StudyConsent {
+  if (!value || typeof value !== 'object') return false
+  const consent=value as Record<string,unknown>
+  return consent.version === CONSENT_VERSION && validConsentTime(consent.acceptedAt)
+}
+function validHintContext(value:unknown): value is StudyHintContext {
+  if (!value || typeof value !== 'object') return false
+  const context=value as Record<string,unknown>
+  return typeof context.statusFiltered === 'boolean' && ['aggregate','individual','empty'].includes(String(context.mapView))
+    && ['none','complex-active','complex-empty','announcement'].includes(String(context.detail))
+    && typeof context.complexFromFilteredPin === 'boolean' && typeof context.choicesOpen === 'boolean' && typeof context.listOpen === 'boolean'
+}
+function validHintOpens(value:unknown, method:TrialKey, elapsedMs:number, helpAtMs:unknown, helpReason:unknown): boolean {
+  if (!Array.isArray(value)) return false
+  if (!value.length) return helpAtMs === null && helpReason === null
+  let previous=0
+  for (const item of value) {
+    if (!item || typeof item !== 'object') return false
+    const record=item as Record<string,unknown>
+    if (typeof record.activeElapsedMs !== 'number' || !Number.isFinite(record.activeElapsedMs)
+      || record.activeElapsedMs < previous || record.activeElapsedMs > elapsedMs
+      || record.mode !== 'complexes' && record.mode !== 'announcements' || !validHintContext(record.context)
+      || selectStudyHint(method,record.mode,record.context).code !== record.hintCode) return false
+    previous=record.activeElapsedMs
+  }
+  return helpReason === 'requested' && value[0].activeElapsedMs === helpAtMs
+}
+function validTrial(value:unknown, method:TrialKey): value is TrialResult {
   if (!value || typeof value !== 'object') return false
   const v = value as Record<string,unknown>
   return ['active','success','skipped'].includes(String(v.outcome)) && typeof v.elapsedMs === 'number' && Number.isFinite(v.elapsedMs) && v.elapsedMs >= 0
     && (v.helpAtMs === null || typeof v.helpAtMs === 'number' && Number.isFinite(v.helpAtMs) && v.helpAtMs >= 0) && (v.helpReason === null || v.helpReason === 'requested')
+    && validHintOpens(v.hintOpens,method,v.elapsedMs,v.helpAtMs,v.helpReason)
     && Array.isArray(v.paths) && v.paths.every(p => ['filter','announcement_map','search','announcement_list','complex','recent'].includes(p))
     && validRequest(v.requestedDetail) && [null,'filtered_complex','announcement_pin'].includes(v.completionSource as never)
     && (v.ease === null || isEaseRating(v.ease)) && typeof v.wrongRoute === 'boolean'
@@ -149,10 +197,11 @@ export function restoreState(source:string | null, datasetVersion:string): Exper
     if (!state || typeof state !== 'object') return null
     const v = state as Partial<ExperimentState>
     if (v.version !== EXPERIMENT_VERSION || v.datasetVersion !== datasetVersion || typeof v.sessionId !== 'string'
+      || !(v.step === 'intro' && v.consent === null || validConsent(v.consent))
       || !Array.isArray(v.order) || v.order.join(',') !== 'old,new' || v.order.length !== 2
       || !['intro','warmup','explore','briefing','old-task','new-task','compare','survey','complete'].includes(v.step ?? '')
       || !Number.isInteger(v.tourStep) || (v.tourStep ?? -1) < 0 || (v.tourStep ?? SERVICE_TOUR.length) >= SERVICE_TOUR.length
-      || typeof v.stageStarted !== 'boolean' || typeof v.test !== 'boolean' || !v.trials || !validTrial(v.trials.old) || !validTrial(v.trials.new)
+      || typeof v.stageStarted !== 'boolean' || typeof v.test !== 'boolean' || !v.trials || !validTrial(v.trials.old,'old') || !validTrial(v.trials.new,'new')
       || (v.responseId !== null && typeof v.responseId !== 'string')) return null
     const restored = v as ExperimentState
     const key = activeTrial(restored)
