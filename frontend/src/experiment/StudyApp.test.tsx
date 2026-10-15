@@ -8,7 +8,7 @@ import { StudyApp } from './StudyApp'
 import type { ExplorerStudy } from './explorerStudy'
 import { EMPTY_HINT_CONTEXT } from './studyHints'
 import { SERVICE_TOUR } from './serviceTour'
-import { initialState, readState, saveState, studyReducer, METHOD_NAMES, type ExperimentSummary, type MethodOrder } from './state'
+import { initialState, readState, saveState, studyReducer, METHOD_NAMES, type ExperimentSummary } from './state'
 vi.mock('../public-housing/PublicHousingExplorer',()=>({PublicHousingExplorer:({study}:{study:ExplorerStudy})=>{
   const {onEvent}=study
   const location=useLocation()
@@ -18,6 +18,7 @@ vi.mock('../public-housing/PublicHousingExplorer',()=>({PublicHousingExplorer:({
     const requestId=crypto.randomUUID()
     onEvent({type:'request-detail',requestId,id:'1',source,complexId:source==='other'?null:'10001',applicationStatuses:['APPLYING']})
     navigate('/?announcementId=1&mapZoom=13')
+    onEvent({type:'context',context:{...EMPTY_HINT_CONTEXT,detail:'announcement'}})
     onEvent({type:'detail',requestId,id:'1',status:'APPLYING'})
   }
   return <div data-testid="explorer"><output aria-label="지도 조건">{location.search}</output>
@@ -27,7 +28,7 @@ vi.mock('../public-housing/PublicHousingExplorer',()=>({PublicHousingExplorer:({
     <div className="housing-search-overlay"><input type="search" aria-label="지역 검색" /></div>
     <button data-study-filter="agency">공급기관</button><button data-study-filter="all">전체 필터</button><button data-study-filter="applicationStatus">모집상태</button>
     <button id="announcement-list-trigger" onClick={()=>study.tourStep===undefined ? detail('other') : setTimeout(()=>onEvent({type:'context',context:{...EMPTY_HINT_CONTEXT,listOpen:true}}),0)}>공고 목록</button><button id="recent-list-trigger">최근 본 단지</button>
-    <button aria-label="지도 확대">＋</button>{study.newModeAvailable && <button id="study-announcement-tab" onClick={()=>study.onModeChange('announcements')}>공고지도</button>}
+    <button aria-label="지도 확대">＋</button>{study.newModeAvailable && <button id="study-announcement-tab" className={study.guideAnnouncementTab?'is-study-guided':''} onClick={()=>study.onModeChange('announcements')}>공고지도</button>}
     <button onClick={()=>detail('filtered_complex')}>필터 단지의 공고 열기</button><button onClick={()=>detail('announcement_pin')}>공고 핀 열기</button></div>
 }}))
 vi.mock('./TallySurvey',()=>({TallySurvey:({summary}:{summary:ExperimentSummary})=><output aria-label="체험 기록">{JSON.stringify(summary)}</output>}))
@@ -70,9 +71,9 @@ describe('three-stage guided comparison',()=>{
     click('준비됐어요, 설문 시작하기')
     expect(screen.getByTestId('explorer')).toBe(explorer)
   })
-  it.each<MethodOrder>([['old','new'],['new','old']])('runs both assigned methods with immediate ratings: %s then %s',async(first,second)=>{
-    const order=[first,second] as MethodOrder
-    saveState(initialState(dataset.datasetVersion,'ordered-session',false,order))
+  it('runs filters first, then the announcement map with immediate ratings',async()=>{
+    const first='old',second='new',order=['old','new'] as const
+    saveState(initialState(dataset.datasetVersion,'ordered-session'))
     await mount();screen.getByRole('heading',{name:/설문을 시작하기 전에/});click('서비스 소개 보기')
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     for(const [index,tip] of SERVICE_TOUR.entries()) {
@@ -105,8 +106,8 @@ describe('three-stage guided comparison',()=>{
     act(()=>vi.advanceTimersByTime(4000));click(first==='old'?'필터 단지의 공고 열기':'공고 핀 열기')
     expect(screen.getByRole('dialog',{name:'공고 내용을 확인했어요.'})).toBeInTheDocument()
     act(()=>vi.advanceTimersByTime(20_000));click('4 쉬웠다');intro(METHOD_NAMES[second])
-    click('두 번째 방법 시작하기');click(second==='old'?'모집상태':'공고지도')
-    act(()=>vi.advanceTimersByTime(3000));click(second==='old'?'필터 단지의 공고 열기':'공고 핀 열기');click('5 매우 쉬웠다')
+    click('두 번째 방법 시작하기');click('공고지도')
+    act(()=>vi.advanceTimersByTime(3000));click('공고 핀 열기');click('5 매우 쉬웠다')
     expect(screen.getByRole('dialog',{name:'체험 설문'})).toBeInTheDocument()
     expect(screen.queryByRole('button',{name:'설문 작성하기'})).not.toBeInTheDocument()
     expect(screen.getByRole('status',{name:'지도 조건',hidden:true})).not.toHaveTextContent('announcementId')
@@ -135,18 +136,19 @@ describe('three-stage guided comparison',()=>{
     expect(screen.getByRole('heading',{name:SERVICE_TOUR[5].title})).toBeInTheDocument()
   })
   it('does not complete map trials through filters or lists, and does not auto-open help at 60 seconds',async()=>{
-    saveState(studyReducer(initialState(dataset.datasetVersion,'wrong-route',false,['new','old']),{type:'step',step:'new-task'}))
-    await mount();screen.getByRole('button',{name:'첫 번째 방법 시작하기'});click('첫 번째 방법 시작하기');click('공고지도')
+    saveState(studyReducer(initialState(dataset.datasetVersion,'wrong-route'),{type:'step',step:'new-task'}))
+    await mount();screen.getByRole('button',{name:'두 번째 방법 시작하기'});click('두 번째 방법 시작하기');click('공고지도')
     act(()=>vi.advanceTimersByTime(70_000))
     expect(screen.queryByRole('note',{name:'현재 상황 힌트'})).not.toBeInTheDocument()
     click('필터 단지의 공고 열기')
-    expect(screen.getByText('이번에는 공고지도 핀을 통해 열어 보세요.')).toBeInTheDocument()
+    expect(screen.getByText('이번에는 공고지도에서 핀을 통해 공고를 찾아 보세요.')).toBeInTheDocument()
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(screen.getByRole('button',{name:'공고지도'})).toHaveClass('is-study-guided')
     click('공고 목록');expect(readState(dataset.datasetVersion)?.trials.new.outcome).toBe('active')
     click('공고 핀 열기');expect(screen.getByRole('dialog',{name:'공고 내용을 확인했어요.'})).toBeInTheDocument()
   })
   it('enables one hint button without countdown or skip and continues through completion',async()=>{
-    saveState(studyReducer(initialState(dataset.datasetVersion,'help',false,['old','new']),{type:'step',step:'old-task'}))
+    saveState(studyReducer(initialState(dataset.datasetVersion,'help'),{type:'step',step:'old-task'}))
     await mount();screen.getByRole('button',{name:'첫 번째 방법 시작하기'});click('첫 번째 방법 시작하기');click('모집상태')
     act(()=>vi.advanceTimersByTime(14_750))
     expect(screen.getByRole('button',{name:'힌트 보기'})).toBeDisabled()
@@ -164,7 +166,7 @@ describe('three-stage guided comparison',()=>{
     expect(readState(dataset.datasetVersion)?.trials.old).toMatchObject({outcome:'success',ease:'unsure'})
   })
   it('excludes background time and fractional guidance intervals from active measurement',async()=>{
-    saveState(studyReducer(initialState(dataset.datasetVersion,'background',false,['old','new']),{type:'step',step:'old-task'}))
+    saveState(studyReducer(initialState(dataset.datasetVersion,'background'),{type:'step',step:'old-task'}))
     await mount();click('첫 번째 방법 시작하기')
     act(()=>vi.advanceTimersByTime(15_125));click('힌트 보기')
     act(()=>vi.advanceTimersByTime(60625));click('힌트 보기')
@@ -190,7 +192,7 @@ describe('three-stage guided comparison',()=>{
     expect(readState(dataset.datasetVersion)?.tourStep).toBe(SERVICE_TOUR.findIndex(tip=>tip.view===view)-1)
   })
   it('offers only a relevant hint and dismisses it when the map situation changes',async()=>{
-    saveState(studyReducer(initialState(dataset.datasetVersion,'context',false,['old','new']),{type:'step',step:'old-task'}))
+    saveState(studyReducer(initialState(dataset.datasetVersion,'context'),{type:'step',step:'old-task'}))
     await mount();click('첫 번째 방법 시작하기');act(()=>vi.advanceTimersByTime(15000))
     click('힌트 보기');click('공고 없는 단지 열기')
     expect(screen.queryByRole('note')).not.toBeInTheDocument()
@@ -203,7 +205,7 @@ describe('three-stage guided comparison',()=>{
     expect(screen.queryByRole('button',{name:'직접 찾아보기'})).not.toBeInTheDocument()
   })
   it('resumes the timer when map interaction dismisses an open hint',async()=>{
-    saveState(studyReducer(initialState(dataset.datasetVersion,'interaction',false,['old','new']),{type:'step',step:'old-task'}))
+    saveState(studyReducer(initialState(dataset.datasetVersion,'interaction'),{type:'step',step:'old-task'}))
     await mount();click('첫 번째 방법 시작하기');act(()=>vi.advanceTimersByTime(15000));click('힌트 보기')
     act(()=>vi.advanceTimersByTime(5125));fireEvent.pointerDown(screen.getByTestId('explorer'))
     expect(screen.queryByRole('note',{name:'현재 상황 힌트'})).not.toBeInTheDocument()
@@ -217,9 +219,9 @@ describe('three-stage guided comparison',()=>{
     expect(readState(dataset.datasetVersion)?.trials.old.elapsedMs).toBe(0)
   })
   it('restores pending immediate ratings without restarting the trial',async()=>{
-    const state=initialState(dataset.datasetVersion,'rating',false,['new','old'])
-    saveState({...state,step:'new-task',trials:{...state.trials,new:{...state.trials.new,outcome:'skipped'}}})
+    const state=initialState(dataset.datasetVersion,'rating')
+    saveState({...state,step:'old-task',trials:{...state.trials,old:{...state.trials.old,outcome:'skipped'}}})
     await mount();screen.getByRole('button',{name:'판단하기 어려워요'});click('판단하기 어려워요');intro(/필터로 찾기|공고지도로 찾기/)
-    expect(readState(dataset.datasetVersion)?.order).toEqual(['new','old'])
+    expect(readState(dataset.datasetVersion)?.order).toEqual(['old','new'])
   })
 })

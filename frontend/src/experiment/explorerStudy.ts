@@ -30,6 +30,7 @@ export interface ExplorerStudy {
   tourCamera?: {latitude:number; longitude:number; zoom:number}
   mode: MapMode
   newModeAvailable: boolean
+  guideAnnouncementTab?: boolean
   announcements: Record<string, StudyAnnouncement[]>
   onModeChange: (mode: MapMode) => void
   onEvent: (event: ExplorerStudyEvent) => void

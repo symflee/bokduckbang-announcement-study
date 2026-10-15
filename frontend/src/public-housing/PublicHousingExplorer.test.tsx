@@ -193,6 +193,21 @@ it.each([true,false])('모바일 상세의 모달 동작을 소개 중에만 해
   } finally { vi.unstubAllGlobals() }
 })
 
+it.each([true,false])('잘못된 경로 안내 중 공고지도 버튼으로 상세를 닫고 전환한다: mobile=%s',async mobile=>{
+  vi.stubGlobal('matchMedia',(query:string)=>({matches:mobile && (query==='(max-width: 767px)' || query==='(max-width: 1023px)')}))
+  const repository=createRepository(),onModeChange=vi.fn()
+  try {
+    render(<MemoryRouter initialEntries={['/?announcementId=201']}><PublicHousingExplorer showWelcome={false} repository={repository} mapRepository={repository}
+      study={{mode:'complexes',onModeChange,newModeAvailable:true,announcements:{},guideAnnouncementTab:true,onEvent:()=>{}}}/></MemoryRouter>)
+    expect(await screen.findByRole('dialog',{name:'공고 상세'})).toHaveAttribute('aria-modal','false')
+    const tab=screen.getByRole('button',{name:'공고지도'})
+    expect(tab).toHaveClass('is-study-guided')
+    fireEvent.click(tab)
+    await waitFor(()=>expect(screen.queryByRole('dialog',{name:'공고 상세'})).not.toBeInTheDocument())
+    expect(onModeChange).toHaveBeenCalledWith('announcements')
+  } finally { vi.unstubAllGlobals() }
+})
+
 it('서비스 소개는 지정한 핀 위치로 시작한다',()=>{
   const repository=createRepository()
   render(<MemoryRouter><PublicHousingExplorer showWelcome={false} repository={repository} mapRepository={repository}

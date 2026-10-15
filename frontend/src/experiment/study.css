@@ -115,9 +115,10 @@
   .study-step-badge { border:1px solid CanvasText; }
 }
 
-.study-spotlight-frame { position:fixed; z-index:1600; border:3px solid var(--ds-color-action); border-radius:12px; box-shadow:0 0 0 9999px #112d244d; pointer-events:none; }
-button.study-spotlit, input.study-spotlit { outline:3px solid var(--ds-color-action) !important; outline-offset:3px; }
-button.study-spotlit { background:var(--ds-color-action-selected) !important; color:var(--ds-color-action) !important; }
+.study-spotlight-frame { position:fixed; z-index:1600; border:3px solid var(--ds-color-deadline); border-radius:12px; box-shadow:0 0 0 9999px #112d244d; pointer-events:none; }
+button.study-spotlit, input.study-spotlit { outline:3px solid var(--ds-color-deadline) !important; outline-offset:3px; }
+button.study-spotlit { background:color-mix(in srgb,var(--ds-color-deadline) 10%,white) !important; color:var(--ds-color-deadline) !important; }
+.study-shell .housing-navigation button.is-study-guided { outline:3px solid var(--ds-color-deadline); outline-offset:3px; background:color-mix(in srgb,var(--ds-color-deadline) 10%,white); }
 .study-tip { position:fixed; right:16px; bottom:24px; z-index:1601; box-sizing:border-box; width:min(340px,calc(100vw - 32px)); height:fit-content; padding:22px; border:1px solid var(--ds-color-divider); border-radius:18px; background:var(--ds-color-surface); box-shadow:0 12px 40px #102c2833; overflow:auto; }
 .study-tip-heading { display:flex; align-items:center; justify-content:space-between; gap:12px; }
 .study-tip-heading button { border:0; background:none; color:var(--ds-color-label); font-size:24px; line-height:24px; padding:0 4px; cursor:pointer; }
@@ -153,7 +154,8 @@ button.study-spotlit { background:var(--ds-color-action-selected) !important; co
 .study-pin-legend [data-status="applying"]::before { background:var(--ds-color-status-applying); }
 .study-pin-legend [data-status="selected"]::before { background:var(--ds-color-brand); }
 @media(max-width:767px) {
-  .app-shell.is-service-tour .housing-explorer .housing-detail-layer {
+  .app-shell.is-service-tour .housing-explorer .housing-detail-layer,
+  .app-shell.is-study-route-guidance .housing-explorer .housing-detail-layer {
     inset:80px 12px auto; width:calc(100% - 24px); height:calc(100dvh - 380px); max-height:calc(100dvh - 380px); transform:none;
   }
 }

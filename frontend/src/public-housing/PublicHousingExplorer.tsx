@@ -1414,7 +1414,7 @@ export function PublicHousingExplorer({
         <div className="housing-results__tabs">
           {study && <>
             <button id="study-complex-tab" type="button" className={study.mode === 'complexes' ? 'is-active' : ''} aria-pressed={study.mode === 'complexes'} onClick={() => { collapseResults(); study.onModeChange('complexes') }}><span className="study-nav-icon" aria-hidden="true">▦</span><span>단지지도</span></button>
-            {study.newModeAvailable && <button id="study-announcement-tab" type="button" className={study.mode === 'announcements' ? 'is-active' : ''} aria-pressed={study.mode === 'announcements'} onClick={() => { collapseResults(); study.onEvent({type:'path', path:'announcement_map'}); study.onModeChange('announcements') }}><span className="study-nav-icon" aria-hidden="true">▤</span><span>공고지도</span></button>}
+            {study.newModeAvailable && <button id="study-announcement-tab" type="button" className={`${study.mode === 'announcements' ? 'is-active' : ''} ${study.guideAnnouncementTab ? 'is-study-guided' : ''}`} aria-describedby={study.guideAnnouncementTab ? 'study-route-guidance' : undefined} aria-pressed={study.mode === 'announcements'} onClick={() => { if (study.guideAnnouncementTab) closeDetail(); collapseResults(); study.onEvent({type:'path', path:'announcement_map'}); study.onModeChange('announcements') }}><span className="study-nav-icon" aria-hidden="true">▤</span><span>공고지도</span></button>}
           </>}
 
           {mobile && !study && <button id="mobile-complex-list-trigger" type="button" aria-controls="complex-results-panel"
@@ -1657,7 +1657,7 @@ export function PublicHousingExplorer({
           )}
         </div>
         <ComplexDetailLayer
-          mobile={mobile && tourStep === undefined}
+          mobile={mobile && tourStep === undefined && !study?.guideAnnouncementTab}
           streetView={streetViewSupported && !mobile ? streetView : undefined}
           state={complexDetail}
           onClose={closeDetail}
@@ -1667,7 +1667,7 @@ export function PublicHousingExplorer({
           onRetry={() => { studyRef.current?.onEvent({type:'retry'}); captureProductEvent('exploration_retry_clicked', { surface: 'detail' }); setDetailRetryRevision((current) => current + 1) }}
         />
         <AnnouncementDetailLayer
-          mobile={mobile && tourStep === undefined}
+          mobile={mobile && tourStep === undefined && !study?.guideAnnouncementTab}
           state={announcementDetail}
           onClose={closeDetail}
           backTarget={detailReturnFocusStack.at(-1)}

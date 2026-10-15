@@ -144,12 +144,14 @@ function StudyExperience({dataset}:{dataset:StudyDataset}) {
   function showTourStep(index:number) {
     dispatch({type:'tour-step',index})
   }
+  const guideAnnouncementTab=key === 'new' && Boolean(trial?.wrongRoute) && !resume && !ratingOpen
+    && (mode !== 'announcements' || hintContext.detail === 'announcement' || hintContext.listOpen)
   const hintAvailable=ready && Boolean(trial && trial.elapsedMs >= HINT_DELAY_MS)
-  return <div className={`app-shell study-shell ${touring ? 'is-service-tour' : ''}`}>
+  return <div className={`app-shell study-shell ${touring ? 'is-service-tour' : ''} ${guideAnnouncementTab ? 'is-study-route-guidance' : ''}`}>
     <div className="study-map" onPointerDownCapture={()=>{if(hintOpen){flush();setHintOpen(false)}}} onKeyDownCapture={()=>{if(hintOpen){flush();setHintOpen(false)}}} inert={['intro','briefing','survey','complete'].includes(state.step) || resume || introduction !== null || Boolean(ratingOpen)}>
       <StudyMapBoundary key={mapKey} ready={ready} onFailure={()=>onEvent({type:'error',surface:'map'})} onRetry={()=>{flushSync(()=>send({type:'retry'}));saveState(stateRef.current);window.location.reload()}}>
       <PublicHousingExplorer {...repositories} showWelcome={false} streetViewSupported={false}
-        study={{mode,newModeAvailable:newAvailable,announcements,tourStep:touring ? state.tourStep : undefined,tourCamera:touring ? tourCamera : undefined,onModeChange:nextMode=>{flush();setHintOpen(false);setMode(nextMode)},onEvent}} />
+        study={{mode,newModeAvailable:newAvailable,guideAnnouncementTab,announcements,tourStep:touring ? state.tourStep : undefined,tourCamera:touring ? tourCamera : undefined,onModeChange:nextMode=>{flush();setHintOpen(false);setMode(nextMode)},onEvent}} />
       </StudyMapBoundary>
     </div>
     {mode === 'announcements' && <div className="study-mode-legend">숫자 = 공고가 있는 단지 수</div>}
@@ -182,8 +184,8 @@ function StudyExperience({dataset}:{dataset:StudyDataset}) {
       <div className="study-task-heading"><span className="study-eyebrow">{ordinal} / 3 · {key ? METHOD_NAMES[key] : '비교·설문'}</span><button onClick={()=>setCollapsed(c=>!c)} aria-expanded={!collapsed} aria-label={collapsed ? '과제 펼치기' : '과제 접기'}>{collapsed ? '＋' : '−'}</button></div>
       {!collapsed && <>
         {trial && key ? <><h2>{trial.wrongRoute ? '공고 내용은 확인했어요.' : '진행 중인 모집공고를 열어 보세요.'}</h2>
-          <p>{!ready ? '지도와 데이터를 준비하고 있습니다.' : trial.wrongRoute
-            ? key === 'new' ? '이번에는 공고지도 핀을 통해 열어 보세요.' : '이번에는 모집상태 필터를 적용하고, 단지지도 핀에서 모집공고를 열어 보세요.'
+          <p id="study-route-guidance" role={trial.wrongRoute ? 'status' : undefined}>{!ready ? '지도와 데이터를 준비하고 있습니다.' : trial.wrongRoute
+            ? key === 'new' ? '이번에는 공고지도에서 핀을 통해 공고를 찾아 보세요.' : '이번에는 모집상태 필터를 적용하고, 단지지도 핀에서 모집공고를 열어 보세요.'
             : `${METHOD_NAMES[key]} 방법을 직접 사용해 보세요. 막히면 힌트를 확인할 수 있어요.`}</p>
           <div className="study-actions"><button className="study-hint-button" disabled={!hintAvailable} aria-expanded={hintOpen} aria-controls="study-current-hint" onClick={()=>{
             flush();if(!hintOpen) dispatch({type:'help',reason:'requested'});setHintOpen(open=>!open)

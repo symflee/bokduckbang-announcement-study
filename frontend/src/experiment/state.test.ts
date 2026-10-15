@@ -1,8 +1,8 @@
-import { describe, expect, it, vi } from 'vitest'
-import { activeTrial, initialState, makeSummary, randomMethodOrder, restoreState, studyReducer, type ExperimentState, type TrialKey } from './state'
+import { describe, expect, it } from 'vitest'
+import { activeTrial, initialState, makeSummary, restoreState, studyReducer, type ExperimentState, type TrialKey } from './state'
 import { parseTallyEvent, tallyUrl } from './tallyAdapter'
 import type { StudyDetailRequest } from './explorerStudy'
-const start=(key:TrialKey='old'):ExperimentState=>({...initialState('data-v2','session',false,['old','new']),step:`${key}-task`})
+const start=(key:TrialKey='old'):ExperimentState=>({...initialState('data-v2','session'),step:`${key}-task`})
 const request: StudyDetailRequest={requestId:'request-1',id:'1',source:'filtered_complex',complexId:'10001',applicationStatuses:['BEFORE_APPLICATION','APPLYING']}
 const show={type:'success' as const, requestId:request.requestId,id:'1',status:'APPLYING'}
 const open=(state:ExperimentState, origin:Partial<StudyDetailRequest>={})=>studyReducer(state,{type:'request-detail',...request,...origin})
@@ -17,15 +17,11 @@ describe('study measurement',()=>{
     const begun=studyReducer(restored,{type:'begin-step'})
     expect(studyReducer(begun,{type:'tick',milliseconds:2000}).trials[key].elapsedMs).toBe(2000)
   })
-  it('assigns either order and preserves it on refresh',()=>{
-    const spy=vi.spyOn(crypto,'getRandomValues')
-    spy.mockImplementationOnce(array=>{if(array instanceof Uint32Array) array[0]=0; return array})
-    expect(randomMethodOrder()).toEqual(['old','new'])
-    spy.mockImplementationOnce(array=>{if(array instanceof Uint32Array) array[0]=1; return array})
-    expect(randomMethodOrder()).toEqual(['new','old'])
-    spy.mockRestore()
-    const state=initialState('data-v2','s',false,['new','old'])
-    expect(restoreState(JSON.stringify(state),'data-v2')?.order).toEqual(['new','old'])
+  it('always starts with filters and restores the fixed order',()=>{
+    for(let i=0;i<10;i++) expect(initialState('data-v2',String(i)).order).toEqual(['old','new'])
+    const state=initialState('data-v2','s')
+    expect(restoreState(JSON.stringify(state),'data-v2')?.order).toEqual(['old','new'])
+    expect(restoreState(JSON.stringify({...state,order:['new','old']}),'data-v2')).toBeNull()
   })
   it('does not complete the announcement-map trial through a filtered complex even after visiting its tab',()=>{
     let state=studyReducer(start('new'),{type:'path',path:'announcement_map'})
@@ -77,7 +73,7 @@ describe('study measurement',()=>{
     expect(restoreState(JSON.stringify(state),'data-v2')?.trials.old).toMatchObject({requestedDetail:null,interrupted:true})
     const rated=studyReducer(studyReducer(state,show),{type:'rate',value:3})
     expect(restoreState(JSON.stringify(rated),'data-v2')?.trials.old.ease).toBe(3)
-    expect(restoreState(JSON.stringify({...state,version:'announcement-map-v6'}),'data-v2')).toBeNull()
+    expect(restoreState(JSON.stringify({...state,version:'announcement-map-v7'}),'data-v2')).toBeNull()
     expect(restoreState(JSON.stringify({...state,order:['old','old']}),'data-v2')).toBeNull()
     expect(restoreState('{','data-v2')).toBeNull()
   })
@@ -86,15 +82,15 @@ describe('study measurement',()=>{
     expect(state.trials.old).toMatchObject({outcome:'active',errors:1,retries:1,interrupted:true})
   })
   it('keeps embedded and external survey metadata identical, keyed by method not ordinal',()=>{
-    let state={...start('new'),order:['new','old'] as const}
+    let state=start('new')
     state=studyReducer(studyReducer(open(state,{source:'announcement_pin'}),show),{type:'rate',value:5}) as typeof state
     const summary=makeSummary(state,'2026-10-14',false)
     const embedded=new URL(tallyUrl('abc',summary,true)), external=new URL(tallyUrl('abc',summary,false))
     for(const [key,value] of external.searchParams) expect(embedded.searchParams.get(key)).toBe(value)
-    expect(external.searchParams.get('method_order')).toBe('new,old')
+    expect(external.searchParams.get('method_order')).toBe('old,new')
     expect(external.searchParams.get('ease_new')).toBe('5')
     expect(external.searchParams.get('new_completion_source')).toBe('announcement_pin')
-    expect(external.searchParams.get('question_version')).toBe('survey-v2')
+    expect(external.searchParams.get('question_version')).toBe('survey-v3')
     expect(parseTallyEvent('not json','abc')).toBeNull()
     expect(parseTallyEvent({event:'Tally.FormSubmitted',payload:{formId:'other',id:'1'}},'abc')).toBeNull()
     expect(parseTallyEvent({event:'Tally.FormSubmitted',payload:{formId:'abc',id:'1'}},'abc')).toEqual({event:'Tally.FormSubmitted',id:'1'})

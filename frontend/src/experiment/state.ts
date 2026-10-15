@@ -1,8 +1,8 @@
 import { SERVICE_TOUR } from './serviceTour'
 import type { CompletionSource, StudyDetailRequest, StudyPath } from './explorerStudy'
 
-export const EXPERIMENT_VERSION = 'announcement-map-v7'
-export const QUESTION_VERSION = 'survey-v2'
+export const EXPERIMENT_VERSION = 'announcement-map-v8'
+export const QUESTION_VERSION = 'survey-v3'
 export type StudyStep = 'intro' | 'warmup' | 'explore' | 'briefing' | 'old-task' | 'new-task' | 'compare' | 'survey' | 'complete'
 const INTRODUCED_STEPS = ['old-task', 'new-task'] as const
 export type IntroducedStep = typeof INTRODUCED_STEPS[number]
@@ -10,7 +10,7 @@ export function hasStepIntroduction(step: StudyStep): step is IntroducedStep {
   return INTRODUCED_STEPS.some(value => value === step)
 }
 export type TrialKey = 'old' | 'new'
-export type MethodOrder = readonly ['old', 'new'] | readonly ['new', 'old']
+export type MethodOrder = readonly ['old', 'new']
 export type EaseRating = 1 | 2 | 3 | 4 | 5 | 'unsure'
 export const METHOD_NAMES: Record<TrialKey, string> = {old:'필터로 찾기', new:'공고지도로 찾기'}
 export interface TrialResult {
@@ -56,10 +56,8 @@ export function emptyTrial(): TrialResult {
   return {outcome:'active', elapsedMs:0, helpAtMs:null, helpReason:null,  paths:[], announcementId:null,
     requestedDetail:null, completionSource:null, wrongRoute:false, ease:null, interrupted:false, errors:0, retries:0}
 }
-export function randomMethodOrder(): MethodOrder {
-  return crypto.getRandomValues(new Uint32Array(1))[0] % 2 === 0 ? ['old','new'] : ['new','old']
-}
-export function initialState(datasetVersion: string, sessionId: string, test = false, order: MethodOrder = randomMethodOrder()): ExperimentState {
+export function initialState(datasetVersion: string, sessionId: string, test = false): ExperimentState {
+  const order: MethodOrder = ['old','new']
   return {version:EXPERIMENT_VERSION, datasetVersion, sessionId, order, step:'intro', stageStarted:true, tourStep:0,
     trials:{old:emptyTrial(), new:emptyTrial()}, test, responseId:null}
 }
@@ -151,7 +149,7 @@ export function restoreState(source:string | null, datasetVersion:string): Exper
     if (!state || typeof state !== 'object') return null
     const v = state as Partial<ExperimentState>
     if (v.version !== EXPERIMENT_VERSION || v.datasetVersion !== datasetVersion || typeof v.sessionId !== 'string'
-      || !Array.isArray(v.order) || !['old,new','new,old'].includes(v.order.join(',')) || v.order.length !== 2
+      || !Array.isArray(v.order) || v.order.join(',') !== 'old,new' || v.order.length !== 2
       || !['intro','warmup','explore','briefing','old-task','new-task','compare','survey','complete'].includes(v.step ?? '')
       || !Number.isInteger(v.tourStep) || (v.tourStep ?? -1) < 0 || (v.tourStep ?? SERVICE_TOUR.length) >= SERVICE_TOUR.length
       || typeof v.stageStarted !== 'boolean' || typeof v.test !== 'boolean' || !v.trials || !validTrial(v.trials.old) || !validTrial(v.trials.new)
