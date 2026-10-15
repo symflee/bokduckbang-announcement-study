@@ -9,20 +9,35 @@ beforeEach(()=>{
 })
 afterEach(()=>{vi.useRealTimers();vi.restoreAllMocks();vi.unstubAllGlobals()})
 describe('소개 강조 위치',()=>{
-  it('모바일 필터 안내를 실제 필터 대화상자 안에 넣어 다음 버튼을 사용할 수 있게 한다',async()=>{
-    vi.stubGlobal('innerWidth',375)
+  it.each([1024,375])('필터 안내와 이동 버튼을 실제 필터 창 안에 한 번만 표시한다 (%i px)',async width=>{
+    vi.stubGlobal('innerWidth',width)
     const onNext=vi.fn(), onApply=vi.fn()
     render(<><ComplexFilterToolbar filters={{}} onApply={onApply} previewTopic="applicationStatus" />
       <StudySpotlight tip={{target:'[data-study-filter-panel="applicationStatus"]',portalTarget:'[data-study-filter-guide-host]',title:'모집 상태로 골라요',text:'원하는 상태의 단지를 볼 수 있어요.'}}
         index={1} total={10} label="서비스 소개" nextLabel="다음" onPrevious={()=>{}} onNext={onNext} /></>)
     await act(()=>vi.advanceTimersByTimeAsync(40))
-    const dialog=screen.getByRole('dialog',{name:'모집상태 필터'})
+    const dialog=screen.getByRole(width>767?'region':'dialog',{name:'모집상태 필터'})
     const guide=within(dialog).getByRole('note',{name:'서비스 소개'})
+    expect(screen.getAllByRole('note',{name:'서비스 소개'})).toHaveLength(1)
     expect(guide).toHaveTextContent('모집 상태로 골라요')
     fireEvent.click(within(guide).getByRole('button',{name:'다음'}))
     expect(onNext).toHaveBeenCalledOnce()
     fireEvent.click(within(guide).getByRole('button',{name:'이전'}))
     expect(onApply).not.toHaveBeenCalled()
+  })
+  it('필터 창이 준비되기 전에 같은 안내를 바깥에 먼저 표시하지 않는다',()=>{
+    render(<StudySpotlight tip={{target:'[data-study-filter-panel="applicationStatus"]',portalTarget:'[data-study-filter-guide-host]',title:'모집 상태로 골라요',text:'필터 안내'}}
+      index={1} total={10} label="서비스 소개" nextLabel="다음" onPrevious={()=>{}} onNext={()=>{}} />)
+    expect(screen.queryByRole('note',{name:'서비스 소개'})).not.toBeInTheDocument()
+  })
+  it('핀 소개는 핀을 자동 포커스해 펼치지 않고 안내 제목에 포커스를 둔다',()=>{
+    vi.spyOn(HTMLElement.prototype,'getBoundingClientRect').mockReturnValue(new DOMRect(60,200,92,54))
+    HTMLElement.prototype.scrollIntoView=vi.fn()
+    render(<><button id="tour-pin">단지 핀</button><StudySpotlight tip={{target:'#tour-pin',focusTarget:false,title:'단지 핀을 눌러 보세요',text:'핀 소개'}}
+      index={3} total={10} label="서비스 소개" nextLabel="다음" onPrevious={()=>{}} onNext={()=>{}} /></>)
+    expect(screen.getByRole('heading',{name:'단지 핀을 눌러 보세요'})).toHaveFocus()
+    expect(screen.getByRole('button',{name:'단지 핀'})).not.toHaveFocus()
+    expect(screen.getByRole('button',{name:'단지 핀'})).toHaveClass('study-spotlit')
   })
   it('패널 전환이 끝난 실제 위치로 강조 영역을 갱신한다',()=>{
     let bounds=new DOMRect(-340,80,400,600)

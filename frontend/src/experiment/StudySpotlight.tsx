@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import { Button } from '../design-system/components/Button'
 import { StudyPinLegend } from './StudyPinLegend'
 
-export interface StudyTip { target: string; title: string; text: string; pinLegend?: boolean; portalTarget?: string }
+export interface StudyTip { target: string; title: string; text: string; pinLegend?: boolean; portalTarget?: string; focusTarget?: boolean }
 
 interface Props {
   tip: StudyTip
@@ -32,8 +32,12 @@ function AnchoredStudySpotlight({tip,index,total,label,nextLabel,onPrevious,onNe
   const activateRef = useRef(onTargetActivate)
   activateRef.current=onTargetActivate
   const card = useRef<HTMLElement>(null)
+  const heading = useRef<HTMLHeadingElement>(null)
   const [placement,setPlacement] = useState<Placement | null>(null)
   const [portalHost,setPortalHost] = useState<HTMLElement | null>(null)
+  useLayoutEffect(()=>{
+    if(portalHost || tip.focusTarget===false) heading.current?.focus({preventScroll:true})
+  },[portalHost,tip.focusTarget])
   useLayoutEffect(() => {
     let selected: HTMLElement | null = null
     let originalDescription: string | null = null
@@ -66,7 +70,7 @@ function AnchoredStudySpotlight({tip,index,total,label,nextLabel,onPrevious,onNe
           selected.setAttribute('aria-describedby',[originalDescription,'study-tip-description'].filter(Boolean).join(' '))
           if (selected.matches('button,input,[tabindex]')) {
             selected.scrollIntoView({block:'nearest',inline:'nearest'})
-            selected.focus({preventScroll:true})
+            if(tip.focusTarget!==false) selected.focus({preventScroll:true})
           }
           resize.observe(selected)
         }
@@ -104,11 +108,13 @@ function AnchoredStudySpotlight({tip,index,total,label,nextLabel,onPrevious,onNe
       window.removeEventListener('resize',schedule);document.removeEventListener('scroll',schedule,true)
       document.removeEventListener('transitionrun',schedule,true);document.removeEventListener('transitionend',schedule,true)
     }
-  },[tip.target,tip.portalTarget])
+  },[tip.target,tip.portalTarget,tip.focusTarget])
+  // A panel guide has one home. Wait for that panel instead of flashing a floating copy.
+  if(tip.portalTarget && !portalHost) return null
   const content = <section ref={card} className="study-tip" role="note" aria-label={label}
       style={portalHost ? {position:'static',width:'100%',maxHeight:'none',margin:'16px 0 0',boxShadow:'none'} : placement ? {left:placement.left,top:placement.top,width:placement.width,maxHeight:placement.maxHeight} : undefined}>
       <div className="study-tip-heading"><span className="study-eyebrow">{label} · {index+1} / {total}</span>{onClose && <button type="button" onClick={onClose} aria-label={closeLabel}>×</button>}</div>
-      <h2>{tip.title}</h2><p id="study-tip-description">{tip.text}</p>
+      <h2 ref={heading} tabIndex={-1}>{tip.title}</h2><p id="study-tip-description">{tip.text}</p>
       <div className="study-tip-actions">{total > 1 && <button type="button" disabled={index===0} onClick={onPrevious}>이전</button>}<Button onClick={onNext}>{nextLabel}</Button></div>
     </section>
   return <>

@@ -53,9 +53,68 @@ describe('ComplexFilterToolbar', () => {
       expect(within(panel).getByRole('checkbox', { name: '접수중' })).not.toBeChecked()
       expect(onApply).not.toHaveBeenCalled()
       expect(onStudyControl).not.toHaveBeenCalled()
-      if (width <= 767) expect(panel.querySelector('[data-study-filter-guide-host]')).not.toBeNull()
+      expect(panel.querySelector('[data-study-filter-guide-host]')).not.toBeNull()
       rerender(<ComplexFilterToolbar filters={{}} onApply={onApply} onStudyControl={onStudyControl} />)
       expect(screen.queryByRole(width > 767 ? 'region' : 'dialog', { name: '모집상태 필터' })).not.toBeInTheDocument()
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
+
+  it.each([1024, 375])('소개 중 필터는 안내가 끝날 때까지 유지하고 실제 조건을 적용하지 않는다 (%i px)', (width) => {
+    vi.stubGlobal('innerWidth', width)
+    const onApply = vi.fn(), onStudyControl = vi.fn()
+    const panelRole = width > 767 ? 'region' : 'dialog'
+    try {
+      const { rerender } = render(<ComplexFilterToolbar filters={{}} onApply={onApply}
+        onStudyControl={onStudyControl} previewTopic="applicationStatus" />)
+      const panel = screen.getByRole(panelRole, { name: '모집상태 필터' })
+      expect(within(panel).queryAllByRole('button', { name: /닫기|적용/ })).toHaveLength(0)
+      fireEvent.click(screen.getByRole('button', { name: width > 767 ? '전체 필터 열기' : '모바일 전체 필터 열기' }))
+      fireEvent.pointerDown(document.body)
+      if (width <= 767 && panel.parentElement) fireEvent.pointerDown(panel.parentElement)
+      fireEvent.keyDown(document, { key: 'Escape' })
+      expect(screen.getByRole(panelRole, { name: '모집상태 필터' })).toBe(panel)
+      fireEvent.click(within(panel).getByRole('checkbox', { name: '접수중' }))
+      const form = panel.querySelector('form')
+      if (form === null) throw new Error('소개 필터 폼을 찾지 못했습니다.')
+      fireEvent.submit(form)
+      expect(onApply).not.toHaveBeenCalled()
+      expect(onStudyControl).not.toHaveBeenCalled()
+
+      rerender(<ComplexFilterToolbar filters={{}} onApply={onApply} onStudyControl={onStudyControl} />)
+      expect(screen.queryByRole(panelRole, { name: '모집상태 필터' })).not.toBeInTheDocument()
+      fireEvent.click(screen.getByRole('button', { name: width > 767 ? '모집상태 필터 열기' : '모바일 모집상태 필터 열기' }))
+      const regularPanel = screen.getByRole(panelRole, { name: '모집상태 필터' })
+      expect(within(regularPanel).getByRole('checkbox', { name: '접수중' })).not.toBeChecked()
+      expect(within(regularPanel).getByRole('button', { name: /닫기/ })).toBeVisible()
+      fireEvent.click(within(regularPanel).getByRole('checkbox', { name: '접수중' }))
+      if (width <= 767) fireEvent.submit(within(regularPanel).getByRole('form', { name: '단지 필터 조건' }))
+      expect(onApply).toHaveBeenCalledExactlyOnceWith({ applicationStatuses: ['APPLYING'] })
+      expect(onStudyControl.mock.calls).toEqual([['filter_open'], ['filter_apply']])
+      fireEvent.keyDown(document, { key: 'Escape' })
+      expect(screen.queryByRole(panelRole, { name: '모집상태 필터' })).not.toBeInTheDocument()
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
+
+  it('소개 중 화면 크기를 바꿔도 열린 필터와 안내 위치는 한 곳만 유지한다', () => {
+    vi.stubGlobal('innerWidth', 1024)
+    const onApply = vi.fn(), onStudyControl = vi.fn()
+    try {
+      render(<ComplexFilterToolbar filters={{}} onApply={onApply}
+        onStudyControl={onStudyControl} previewTopic="applicationStatus" />)
+      for (const width of [375, 1024, 375]) {
+        vi.stubGlobal('innerWidth', width)
+        fireEvent.resize(window)
+        const panel = screen.getByRole(width > 767 ? 'region' : 'dialog', { name: '모집상태 필터' })
+        expect(panel.querySelector('[data-study-filter-guide-host]')).not.toBeNull()
+        expect(document.querySelectorAll('[data-study-filter-guide-host]')).toHaveLength(1)
+        expect(within(panel).getByRole('checkbox', { name: '접수중' })).not.toBeChecked()
+      }
+      expect(onApply).not.toHaveBeenCalled()
+      expect(onStudyControl).not.toHaveBeenCalled()
     } finally {
       vi.unstubAllGlobals()
     }

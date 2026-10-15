@@ -194,6 +194,9 @@ export function PublicHousingExplorer({
 }: PublicHousingExplorerProps) {
   const studyRef = useRef(study)
   studyRef.current = study
+  const tourStep = study?.tourStep
+  const tourView = tourStep === undefined ? undefined : SERVICE_TOUR[tourStep].view
+  const tourListVisible = tourView === 'list' || tourView === 'list-announcement'
   const [studyMapReady, setStudyMapReady] = useState(false)
   const [studyChoices, setStudyChoices] = useState<string | null>(null)
   const [studyDetailRequest, setStudyDetailRequest] = useState<StudyDetailRequest | null>(null)
@@ -283,10 +286,14 @@ export function PublicHousingExplorer({
   const [searchRevision, setSearchRevision] = useState(0)
   const pendingListTriggerFocusRef = useRef<ResultList | null>(null)
   useLayoutEffect(() => {
+    if (tourStep !== undefined) {
+      pendingListTriggerFocusRef.current = null
+      return
+    }
     if (pendingListTriggerFocusRef.current === null) return
     focusListTrigger(pendingListTriggerFocusRef.current)
     pendingListTriggerFocusRef.current = null
-  }, [searchRevision])
+  }, [searchRevision, tourStep])
   useLayoutEffect(() => {
     const overlay = searchOverlayRef.current
     const explorer = overlay?.closest<HTMLElement>('.housing-explorer')
@@ -311,15 +318,13 @@ export function PublicHousingExplorer({
   const [activeResultTab, setActiveResultTab] =
     useState<ResultList>('complexes')
   const [announcementListRequested, setAnnouncementListRequested] = useState(false)
-  const tourStep = study?.tourStep
   useEffect(() => {
     if (tourStep === undefined) return
     setIntegratedSearchActive(false)
-    const showList = SERVICE_TOUR[tourStep].view === 'list'
-    setListPanelMode(showList ? 'open' : 'collapsed')
-    setActiveResultTab(showList ? 'announcements' : 'complexes')
-    if (showList) setAnnouncementListRequested(true)
-  }, [tourStep])
+    setListPanelMode(tourListVisible ? 'open' : 'collapsed')
+    setActiveResultTab(tourListVisible ? 'announcements' : 'complexes')
+    if (tourListVisible) setAnnouncementListRequested(true)
+  }, [tourStep, tourListVisible])
   const [listPanelMode, setListPanelMode] = useState<'auto' | 'open' | 'collapsed'>(() => (
     (initialDetail.kind === 'complex' || initialDetail.kind === 'announcement')
       && window.matchMedia?.('(max-width: 1023px)').matches ? 'collapsed' : 'auto'
@@ -759,6 +764,10 @@ export function PublicHousingExplorer({
   ])
 
   useEffect(() => {
+    if (tourStep !== undefined) {
+      pendingListFocusRef.current = null
+      return
+    }
     const pending = pendingListFocusRef.current
     if (detailLocation.kind !== 'none'
       || pending === null
@@ -780,12 +789,12 @@ export function PublicHousingExplorer({
       pendingListFocusRef.current = null
     }, 0)
     return () => window.clearTimeout(timeout)
-  }, [activeResultTab, detailLocation])
+  }, [activeResultTab, detailLocation, tourStep])
 
   useEffect(() => {
     const previousStack = previousDetailReturnFocusStackRef.current
     previousDetailReturnFocusStackRef.current = detailReturnFocusStack
-    if (previousStack.length <= detailReturnFocusStack.length) {
+    if (tourStep !== undefined || previousStack.length <= detailReturnFocusStack.length) {
       pendingDetailReturnFocusRef.current = null
       return
     }
@@ -796,9 +805,13 @@ export function PublicHousingExplorer({
         .slice(detailReturnFocusStack.length)
         .reverse()
         .find((entry) => sameDetailLocation(entry, currentDetail)) ?? null
-  }, [detailLocation, detailReturnFocusStack])
+  }, [detailLocation, detailReturnFocusStack, tourStep])
 
   useEffect(() => {
+    if (tourStep !== undefined) {
+      pendingDetailReturnFocusRef.current = null
+      return
+    }
     const pending = pendingDetailReturnFocusRef.current
     if (!pending || !isReadyDetailReturnTarget({
       announcementDetail,
@@ -817,7 +830,7 @@ export function PublicHousingExplorer({
       pendingDetailReturnFocusRef.current = null
     }, 0)
     return () => window.clearTimeout(timeout)
-  }, [announcementDetail, complexDetail, detailLocation])
+  }, [announcementDetail, complexDetail, detailLocation, tourStep])
 
   const openDetail = useCallback((kind: ResultTab, id: string, entryPoint: DetailEntryPoint, studyOrigin?: Pick<StudyDetailRequest, 'source' | 'complexId' | 'applicationStatuses'>) => {
     if (studyRef.current && kind === 'announcements') {
@@ -1359,7 +1372,7 @@ export function PublicHousingExplorer({
   useEffect(() => {
     studyRef.current?.onEvent({type:'context', context:{statusFiltered:hintFiltered, mapView:hintMapView,
       detail:hintDetail, complexFromFilteredPin:hintFromPin, choicesOpen:studyChoices !== null, listOpen:showListPage || integratedSearchActive}})
-  }, [hintFiltered, hintMapView, hintDetail, hintFromPin, studyChoices, showListPage, integratedSearchActive])
+  }, [hintFiltered, hintMapView, hintDetail, hintFromPin, studyChoices, showListPage, integratedSearchActive, activeResultTab])
   useEffect(() => {
     studyRef.current?.onEvent({type: 'ready', ready: studyMapReady && serverMapState.status === 'ready'})
     if (serverMapState.status === 'error') studyRef.current?.onEvent({type: 'error', surface: 'data'})
@@ -1404,6 +1417,7 @@ export function PublicHousingExplorer({
   const showResultPage = !streetView.active && (integratedSearchActive || showListPage)
 
   function collapseResults() {
+    if (tourListVisible) return
     mobileDetailListModeRef.current = null
     setListPanelMode('collapsed')
     focusListTrigger(activeResultTab)
@@ -1490,7 +1504,7 @@ export function PublicHousingExplorer({
             )}
           />
         </div>
-        <HousingResultsPanel visible={showListPage} onCollapse={collapseResults}
+        <HousingResultsPanel visible={showListPage} onCollapse={collapseResults} collapsible={!tourListVisible}
           title={activeResultTab === 'recent' ? '최근 본 단지' : activeResultTab === 'complexes' ? '단지 목록' : '공고 목록'}>
           <div className="housing-results__browse">
 

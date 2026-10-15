@@ -1,5 +1,5 @@
 import { captureProductEvent } from '../../analytics/productAnalytics'
-import { useRef, useState, type CSSProperties, type PointerEvent, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type CSSProperties, type PointerEvent, type ReactNode } from 'react'
 import { useMobileViewport } from './useMobileViewport'
 
 const SNAP_LABELS = ['접힘', '절반 펼침', '크게 펼침'] as const
@@ -9,16 +9,25 @@ interface Props {
   readonly visible: boolean
   readonly title: string
   readonly onCollapse: () => void
+  readonly collapsible?: boolean
   readonly children: ReactNode
 }
 
-export function HousingResultsPanel({ visible, title, onCollapse, children }: Props) {
+export function HousingResultsPanel({ visible, title, onCollapse, collapsible = true, children }: Props) {
   const mobile = useMobileViewport()
   const panel = useRef<HTMLElement>(null)
   const [snap, setSnap] = useState(1)
   const [dragHeight, setDragHeight] = useState<number | null>(null)
   const drag = useRef<{ pointerId: number; y: number; height: number; peek: number; max: number; startTime: number } | null>(null)
-  const collapsed = mobile && snap === 0
+  const visibleSnap = collapsible ? snap : Math.max(1, snap)
+  const collapsed = mobile && visibleSnap === 0
+  const dragging = collapsible && dragHeight !== null
+
+  useEffect(() => {
+    if (collapsible) return
+    drag.current = null
+    setDragHeight(null)
+  }, [collapsible])
 
   function changeSnap(next: number, method: 'drag' | 'keyboard' | 'button') {
     if (next === snap) return
@@ -63,10 +72,10 @@ export function HousingResultsPanel({ visible, title, onCollapse, children }: Pr
 
   return (
     <aside ref={panel} className="housing-results" id="housing-list-page" aria-label="공공임대주택 검색 결과"
-      aria-hidden={!visible} inert={!visible} data-mobile={mobile || undefined} data-snap={snap}
-      data-dragging={dragHeight !== null || undefined}
-      style={mobile && dragHeight !== null ? { '--sheet-drag-height': `${dragHeight}px` } as CSSProperties : undefined}>
-      {mobile && <div className="housing-results__sheet-handle" role="slider" tabIndex={0}
+      aria-hidden={!visible} inert={!visible} data-mobile={mobile || undefined} data-snap={visibleSnap}
+      data-dragging={dragging || undefined}
+      style={mobile && dragging ? { '--sheet-drag-height': `${dragHeight}px` } as CSSProperties : undefined}>
+      {mobile && collapsible && <div className="housing-results__sheet-handle" role="slider" tabIndex={0}
         aria-label="목록 높이" aria-orientation="vertical" aria-valuemin={0} aria-valuemax={2}
         aria-valuenow={snap} aria-valuetext={SNAP_LABELS[snap]}
         onPointerDown={startDrag} onPointerMove={moveDrag} onPointerUp={(event) => endDrag(event)}
@@ -82,13 +91,13 @@ export function HousingResultsPanel({ visible, title, onCollapse, children }: Pr
         }}><span aria-hidden="true" /></div>}
       <header className="housing-results__page-header">
         <h2>{title}</h2>
-        <button type="button" className="housing-results__collapse" aria-label={collapsed ? '목록 펼치기' : '목록 접기'}
+        {collapsible && <button type="button" className="housing-results__collapse" aria-label={collapsed ? '목록 펼치기' : '목록 접기'}
           aria-controls="housing-list-content" aria-expanded={visible && !collapsed}
           onClick={() => mobile ? changeSnap(collapsed ? 1 : 0, 'button') : onCollapse()}>
           <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
             <path d="m12 4-6 6 6 6" />
           </svg>
-        </button>
+        </button>}
       </header>
       <div className="housing-results__content" id="housing-list-content" aria-hidden={collapsed} inert={collapsed}>
         {children}

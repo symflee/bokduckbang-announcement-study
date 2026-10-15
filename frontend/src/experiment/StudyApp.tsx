@@ -63,23 +63,51 @@ function StudyExperience({dataset}:{dataset:StudyDataset}) {
   const repositories = useMemo(()=>createStudyRepositories(dataset,mode),[dataset,mode])
   const announcements = useMemo(()=>announcementsByComplex(dataset.snapshot),[dataset])
   const tourComplex=dataset.snapshot.mapComplexItems.find(item=>announcements[item.complexId]?.length)
+  const selectedTourComplex=useRef<string | null>(null)
+  const previousTourStep=useRef<number | null>(null)
+  const previousTourDetail=useRef<string | null>(null)
+  const tourListRequested=useRef(false)
   const pinsIntroduction=SERVICE_TOUR.findIndex(tip=>tip.view==='pins')
   const tourCamera=tourComplex && state.tourStep>=pinsIntroduction ? {latitude:tourComplex.latitude,longitude:tourComplex.longitude,zoom:13} : undefined
   // Keep the map mounted; only change the detail needed by the current explanation.
   useEffect(()=>{
-    if (!touring || !tourComplex) return
+    if (!touring || !tourComplex) {previousTourStep.current=null;return}
+    const stepChanged=previousTourStep.current!==state.tourStep
+    previousTourStep.current=state.tourStep
+    if(stepChanged) tourListRequested.current=false
     const view=SERVICE_TOUR[state.tourStep].view
     const currentParams=new URLSearchParams(searchRef.current)
     const selected=parseDetailLocation(currentParams)
-    const complexId=selected.kind==='complex' && announcements[selected.complexId]?.length
-      ? selected.complexId : String(tourComplex.complexId)
+    const signature=JSON.stringify(selected)
+    const detailChanged=previousTourDetail.current!==signature
+    previousTourDetail.current=signature
+    if(selected.kind==='complex' && announcements[selected.complexId]?.length) selectedTourComplex.current=selected.complexId
+    const complexId=selectedTourComplex.current ?? String(tourComplex.complexId)
+    if(!stepChanged) {
+      if(!detailChanged) return
+      // Follow manual close/back/detail links instead of leaving a guide over a missing panel.
+      let nextView: typeof view
+      if(view==='complex' || view==='complex-announcement') {
+        if(selected.kind==='none') nextView='pins'
+        if(selected.kind==='announcement') nextView='announcement'
+      }
+      if(view==='announcement' || view==='list-announcement') {
+        if(selected.kind==='none') nextView=view==='announcement' ? 'complex-announcement' : 'list'
+        if(selected.kind==='complex') nextView='complex'
+      }
+      if(nextView) {
+        const index=SERVICE_TOUR.findIndex(tip=>tip.view===nextView && !tip.pinLegend)
+        dispatch({type:'tour-step',index})
+      }
+      return
+    }
     let params=clearDetailQuery(currentParams)
     if(view==='complex' || view==='complex-announcement') params=setComplexIdQuery(params,complexId)
     if(view==='announcement' || view==='list-announcement') {
       params=setAnnouncementIdQuery(params,selected.kind==='announcement' ? selected.announcementId : announcements[complexId][0].id)
     }
     if(params.toString()!==currentParams.toString()) navigate(`/?${params}`,{replace:true})
-  },[touring,state.tourStep,tourComplex,announcements,navigate])
+  },[touring,state.tourStep,search,tourComplex,announcements,navigate])
   const flush = useCallback(() => {
     const now = performance.now()
     const elapsed = now-lastTick.current
@@ -103,7 +131,13 @@ function StudyExperience({dataset}:{dataset:StudyDataset}) {
     return ()=>{clearInterval(timer);document.removeEventListener('visibilitychange',visibility);window.removeEventListener('pagehide',persist)}
   },[flush])
   const onEvent = useCallback((event:ExplorerStudyEvent) => {
-    if(event.type==='control') {capture('study_control_clicked',{control:event.control});return}
+    if(event.type==='control') {
+      capture('study_control_clicked',{control:event.control})
+      if(stateRef.current.step==='warmup' && SERVICE_TOUR[stateRef.current.tourStep].target==='#announcement-list-trigger') {
+        tourListRequested.current=event.control==='announcement_list_toggle'
+      }
+      return
+    }
     if (event.type === 'context') {
       const current=stateRef.current
       if(current.step==='warmup') {
@@ -111,7 +145,7 @@ function StudyExperience({dataset}:{dataset:StudyDataset}) {
         const progressed=tip.advanceOnTarget && (
           tip.view==='pins' && event.context.detail==='complex-active' && hintContextRef.current.detail!=='complex-active'
           || tip.view==='complex-announcement' && event.context.detail==='announcement' && hintContextRef.current.detail!=='announcement'
-          || tip.target==='#announcement-list-trigger' && event.context.listOpen && !hintContextRef.current.listOpen
+          || tip.target==='#announcement-list-trigger' && tourListRequested.current && event.context.listOpen
         )
         if(progressed || tip.view==='list' && event.context.detail==='announcement' && hintContextRef.current.detail!=='announcement') dispatch({type:'tour-step',index:current.tourStep+1})
       }

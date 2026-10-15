@@ -2,7 +2,7 @@
 .study-map { grid-column:2; width:100%; height:100%; }
 .study-shell .housing-navigation { top:20px; }
 .study-data-notice { position:fixed; bottom:4px; left:50%; transform:translateX(-50%); z-index:100; padding:3px 8px; border-radius:4px; background:#fffffff0; color:#5b6462; font-size:10px; white-space:nowrap; pointer-events:none; }
-.study-test-label { position:fixed; top:10px; right:14px; z-index:800; background:#fff4cc; padding:5px 10px; border-radius:6px; font-size:12px; }
+.study-test-label { position:fixed; top:10px; right:14px; z-index:800; background:#fff4cc; padding:5px 10px; border-radius:6px; font-size:12px; pointer-events:none; }
 .study-nav-icon { font-size:24px; height:26px; line-height:26px; }
 .study-shell .housing-navigation .housing-results__tabs button { font-size:11px; white-space:nowrap; }
 .study-task-card { position:fixed; z-index:600; right:24px; bottom:35px; width:320px; padding:20px; border:1px solid #e3e9e4; border-radius:20px; background:#fff; box-shadow:0 8px 40px #19352b1f; }
@@ -123,6 +123,9 @@ button.study-spotlit { background:color-mix(in srgb,var(--ds-color-deadline) 10%
 .study-tip-heading { display:flex; align-items:center; justify-content:space-between; gap:12px; }
 .study-tip-heading button { border:0; background:none; color:var(--ds-color-label); font-size:24px; line-height:24px; padding:0 4px; cursor:pointer; }
 .study-tip h2 { font-size:20px; line-height:1.45; letter-spacing:-.04em; margin:14px 0 10px; }
+.study-tip h2:focus { outline:none; }
+[data-study-filter-panel]:has(> [data-study-filter-guide-host]) { flex-direction:column; overflow:auto; }
+[data-study-filter-panel]:has(> [data-study-filter-guide-host]) > form { flex:none; }
 .study-tip p { font-size:14px; line-height:1.8; color:var(--ds-color-label); margin:0 0 20px; word-break:keep-all; }
 .study-tip-actions { display:flex; gap:12px; align-items:center; }
 .study-tip-actions > button:first-child:not(:only-child) { flex:none; border:0; background:none; color:var(--ds-color-label); font-size:13px; padding:10px 4px; cursor:pointer; }
@@ -148,6 +151,7 @@ button.study-spotlit { background:color-mix(in srgb,var(--ds-color-deadline) 10%
 .study-actions .study-hint-button:not(:disabled) { background:var(--ds-color-action-soft); border:2px solid var(--ds-color-action); color:var(--ds-color-action); font-weight:700; box-shadow:0 0 0 3px #32724914; }
 
 @media(max-width:767px) {
+  .app-shell.is-service-tour .housing-explorer .housing-detail-layer { z-index:550; }
   .app-shell.is-service-tour .housing-explorer .housing-detail-layer,
   .app-shell.is-study-route-guidance .housing-explorer .housing-detail-layer {
     inset:80px 12px auto; width:calc(100% - 24px); height:calc(100dvh - 380px); max-height:calc(100dvh - 380px); transform:none;
@@ -168,5 +172,5 @@ button.study-spotlit { background:color-mix(in srgb,var(--ds-color-deadline) 10%
 .study-entry-actions { display:flex; flex-direction:column; gap:10px; }
 .study-entry-actions .study-secondary { padding:12px; border:0; background:transparent; color:var(--ds-color-label); cursor:pointer; font-size:13px; }
 .study-entry-actions button:focus-visible { outline:3px solid var(--ds-color-action); outline-offset:3px; }
-.study-explore-start { position:fixed; z-index:100; right:24px; bottom:36px; width:auto; }
+.study-explore-start { position:fixed; z-index:700; right:24px; bottom:36px; width:auto; }
 @media(max-width:767px) { .study-explore-start { right:16px; bottom:88px; } .study-entry-dialog { padding:24px; } }

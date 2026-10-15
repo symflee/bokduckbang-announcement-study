@@ -240,11 +240,11 @@ it('소개 중 핀 위치로 이동한 뒤 다음 설명에서도 지도와 사�
   expect(screen.getByTestId('map-camera-request').textContent).toBe(cameraRequest)
 })
 
-it('서비스 소개에서 공고 목록을 실제로 열고 다음 소개로 가면 닫는다', async () => {
+it('서비스 소개에서 공고 목록과 목록 상세 동안 목록을 유지하고 다른 단계에서 닫는다', async () => {
   const repository=createRepository()
   function Experience() {
     const [tourStep,setTourStep]=useState(SERVICE_TOUR.findIndex(tip=>tip.target==='#announcement-list-trigger'))
-    return <><button onClick={()=>setTourStep(SERVICE_TOUR.findIndex(tip=>tip.view==='list'))}>목록 시연 시작</button><button onClick={()=>setTourStep(SERVICE_TOUR.findIndex(tip=>tip.view==='list-announcement'))}>다음 소개</button>
+    return <><button onClick={()=>setTourStep(SERVICE_TOUR.findIndex(tip=>tip.view==='list'))}>목록 시연 시작</button><button onClick={()=>setTourStep(SERVICE_TOUR.findIndex(tip=>tip.view==='list-announcement'))}>다음 소개</button><button onClick={()=>setTourStep(0)}>첫 소개</button>
       <PublicHousingExplorer showWelcome={false} repository={repository} mapRepository={repository}
         study={{mode:'complexes',onModeChange:()=>{},newModeAvailable:false,announcements:{},tourStep,onEvent:()=>{}}} /></>
   }
@@ -253,8 +253,38 @@ it('서비스 소개에서 공고 목록을 실제로 열고 다음 소개로 �
   fireEvent.click(screen.getByRole('button',{name:'목록 시연 시작'}))
   await screen.findByRole('button',{name:'성남 청년 행복주택 입주자 모집 공고 상세 보기'})
   expect(screen.getByRole('button',{name:'공고 목록'})).toHaveAttribute('aria-expanded','true')
+  expect(screen.queryByRole('button',{name:'목록 접기'})).not.toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button',{name:'공고 목록'}))
+  expect(screen.getByRole('button',{name:'공고 목록'})).toHaveAttribute('aria-expanded','true')
   fireEvent.click(screen.getByRole('button',{name:'다음 소개'}))
+  expect(screen.getByRole('button',{name:'공고 목록'})).toHaveAttribute('aria-expanded','true')
+  fireEvent.click(screen.getByRole('button',{name:'공고 목록'}))
+  expect(screen.getByRole('button',{name:'공고 목록'})).toHaveAttribute('aria-expanded','true')
+  fireEvent.click(screen.getByRole('button',{name:'첫 소개'}))
   expect(screen.getByRole('button',{name:'공고 목록'})).toHaveAttribute('aria-expanded','false')
+})
+
+it('소개 단계가 상세를 닫아도 일반 목록 포커스 복원이 다음 소개 버튼의 포커스를 빼앗지 않는다', async () => {
+  const repository=createRepository()
+  function Experience() {
+    const navigate=useNavigate()
+    const [tourStep,setTourStep]=useState(SERVICE_TOUR.findIndex(tip=>tip.view==='announcement'))
+    return <><button onClick={()=>{
+      navigate('/')
+      setTourStep(SERVICE_TOUR.findIndex(tip=>tip.target==='#announcement-list-trigger'))
+    }}>소개 다음</button>
+      <PublicHousingExplorer showWelcome={false} repository={repository} mapRepository={repository}
+        study={{mode:'complexes',onModeChange:()=>{},newModeAvailable:false,announcements:{},tourStep,onEvent:()=>{}}} /></>
+  }
+  render(<MemoryRouter initialEntries={['/?announcementId=201']}><Experience /></MemoryRouter>)
+  await screen.findByRole('dialog',{name:'공고 상세'})
+  const next=screen.getByRole('button',{name:'소개 다음'})
+  fireEvent.click(next)
+  expect(screen.queryByRole('dialog',{name:'공고 상세'})).not.toBeInTheDocument()
+  // The next guide takes focus after the previous detail closes.
+  next.focus()
+  await act(async()=>{ await new Promise(resolve=>setTimeout(resolve,20)) })
+  expect(next).toHaveFocus()
 })
 
 it('모집상태 소개에서는 필터 창만 열고 실제 사용자 적용만 실험 클릭으로 전달한다', async () => {
@@ -311,6 +341,20 @@ it('공고 탭을 눌러 다음 소개로 넘어가도 열린 목록을 유지�
   fireEvent.click(screen.getByRole('button',{name:'공고 목록'}))
   expect(await screen.findByRole('button',{name:'성남 청년 행복주택 입주자 모집 공고 상세 보기'})).toBeVisible()
   expect(screen.getByRole('button',{name:'공고 목록'})).toHaveAttribute('aria-expanded','true')
+})
+
+it('소개에서 최근 본 목록을 공고 목록으로 바꾸면 열린 탐색 상황을 다시 알린다', async () => {
+  const repository=createRepository(), onEvent=vi.fn()
+  render(<MemoryRouter><PublicHousingExplorer showWelcome={false} repository={repository} mapRepository={repository}
+    study={{mode:'complexes',onModeChange:()=>{},newModeAvailable:false,announcements:{},
+      tourStep:SERVICE_TOUR.findIndex(tip=>tip.target==='#announcement-list-trigger'),onEvent}} /></MemoryRouter>)
+  fireEvent.click(screen.getByRole('button',{name:'최근 본 단지'}))
+  expect(onEvent).toHaveBeenCalledWith(expect.objectContaining({type:'context',context:expect.objectContaining({listOpen:true})}))
+  onEvent.mockClear()
+  fireEvent.click(screen.getByRole('button',{name:'공고 목록'}))
+  await screen.findByRole('button',{name:'성남 청년 행복주택 입주자 모집 공고 상세 보기'})
+  expect(onEvent).toHaveBeenCalledWith({type:'control',control:'announcement_list_toggle'})
+  expect(onEvent).toHaveBeenCalledWith(expect.objectContaining({type:'context',context:expect.objectContaining({listOpen:true})}))
 })
 
 it('공고 없는 단지의 상세를 힌트 맥락에 전달한다', async () => {

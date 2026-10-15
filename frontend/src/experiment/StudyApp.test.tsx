@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs'
-import { useEffect } from 'react'
+import { StrictMode, useEffect } from 'react'
 import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import { MemoryRouter, useLocation, useNavigate } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -28,7 +28,17 @@ vi.mock('../public-housing/PublicHousingExplorer',()=>({PublicHousingExplorer:({
     <div className="housing-search-overlay"><input type="search" aria-label="지역 검색" /></div>
     <button data-study-filter="agency">공급기관</button><button data-study-filter="all">전체 필터</button><button data-study-filter="applicationStatus">모집상태</button>
     {study.tourStep!==undefined && SERVICE_TOUR[study.tourStep].filterPreview==='applicationStatus' && <section data-study-filter-panel="applicationStatus" aria-label="모집상태 필터 시연"><span>공고중·접수중</span><div data-study-filter-guide-host /></section>}
-    <button id="announcement-list-trigger" onClick={()=>study.tourStep===undefined ? detail('other') : setTimeout(()=>onEvent({type:'context',context:{...EMPTY_HINT_CONTEXT,listOpen:true}}),0)}>공고 목록</button><button id="recent-list-trigger">최근 본 단지</button>
+    <button id="announcement-list-trigger" onClick={()=>{
+      onEvent({type:'control',control:'announcement_list_toggle'})
+      if(study.tourStep===undefined) detail('other')
+      else setTimeout(()=>onEvent({type:'context',context:{...EMPTY_HINT_CONTEXT,listOpen:true}}),0)
+    }}>공고 목록</button><button id="recent-list-trigger" onClick={()=>{
+      onEvent({type:'control',control:'recent_list_toggle'})
+      onEvent({type:'context',context:{...EMPTY_HINT_CONTEXT,listOpen:true}})
+    }}>최근 본 단지</button>
+    <button onClick={()=>navigate('/?complexId=10004')}>다른 단지 상세 열기</button>
+    <button onClick={()=>navigate('/?announcementId=20003')}>연결된 공고 상세 열기</button>
+    <button onClick={()=>navigate('/')}>상세 닫기</button>
     <button aria-label="지도 확대">＋</button>{study.newModeAvailable && <button id="study-announcement-tab" className={study.guideAnnouncementTab?'is-study-guided':''} onClick={()=>study.onModeChange('announcements')}>공고지도</button>}
     <button onClick={()=>detail('filtered_complex')}>필터 단지의 공고 열기</button><button onClick={()=>detail('announcement_pin')}>공고 핀 열기</button></div>
 }}))
@@ -173,6 +183,40 @@ describe('three-stage guided comparison',()=>{
     expect(screen.getByRole('heading',{name:SERVICE_TOUR[tabStep].title})).toBeInTheDocument()
     act(()=>vi.advanceTimersByTime(1))
     expect(screen.getByRole('heading',{name:SERVICE_TOUR[tabStep+1].title})).toBeInTheDocument()
+  })
+  it('does not advance the announcement-list introduction when a different list opens',async()=>{
+    saveState({...consented('tour-other-list'),tourStep:7})
+    await mount()
+    click('최근 본 단지')
+    expect(screen.getByRole('heading',{name:SERVICE_TOUR[7].title})).toBeInTheDocument()
+    click('공고 목록')
+    act(()=>vi.advanceTimersByTime(1))
+    expect(screen.getByRole('heading',{name:SERVICE_TOUR[8].title})).toBeInTheDocument()
+  })
+  it.each([[4,3],[5,3],[6,5],[9,8]])('keeps the guide connected after closing the detail in step %i',async(from,to)=>{
+    saveState({...consented('tour-close'),tourStep:from})
+    await mount()
+    click('상세 닫기')
+    expect(screen.getByRole('heading',{name:SERVICE_TOUR[to].title})).toBeInTheDocument()
+  })
+  it('keeps the selected complex when returning from its announcement and follows detail links',async()=>{
+    saveState({...consented('tour-selection'),tourStep:4})
+    await mount()
+    click('다른 단지 상세 열기')
+    click('모집공고 살펴보기')
+    click('공고 상세 열어보기')
+    click('이전')
+    expect(screen.getByRole('status',{name:'지도 조건'})).toHaveTextContent('complexId=10004')
+    click('연결된 공고 상세 열기')
+    expect(screen.getByRole('heading',{name:SERVICE_TOUR[6].title})).toBeInTheDocument()
+    click('다른 단지 상세 열기')
+    expect(screen.getByRole('heading',{name:SERVICE_TOUR[4].title})).toBeInTheDocument()
+  })
+  it.each([4,5,6,9])('restores step %i on reload under StrictMode without treating initial navigation as a close',async index=>{
+    saveState({...consented('tour-reload'),tourStep:index})
+    await act(async()=>{render(<StrictMode><MemoryRouter><StudyApp /></MemoryRouter></StrictMode>)})
+    expect(screen.getByRole('heading',{name:SERVICE_TOUR[index].title})).toBeInTheDocument()
+    expect(readState(dataset.datasetVersion)?.tourStep).toBe(index)
   })
   it('advances after a detail opens and ignores unchanged context when returning to its introduction',async()=>{
     const pinStep=SERVICE_TOUR.findIndex(tip=>tip.view==='pins' && tip.advanceOnTarget)

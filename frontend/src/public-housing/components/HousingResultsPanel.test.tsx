@@ -40,6 +40,35 @@ function renderPanel() {
   </HousingResultsPanel>)
 }
 
+it.each([true, false])('접기를 막은 안내 목록은 조작 버튼 없이 내용을 보여준다: mobile=%s', (isMobile) => {
+  mobile = isMobile
+  const onCollapse = vi.fn()
+  render(<HousingResultsPanel title="공고 목록" visible collapsible={false} onCollapse={onCollapse}>
+    <button>상세 보기</button>
+  </HousingResultsPanel>)
+  expect(screen.getByRole('button', { name: '상세 보기' })).toBeVisible()
+  expect(screen.queryByRole('button', { name: /목록 접기|목록 펼치기/ })).not.toBeInTheDocument()
+  expect(screen.queryByRole('slider', { name: '목록 높이' })).not.toBeInTheDocument()
+  expect(onCollapse).not.toHaveBeenCalled()
+})
+
+it('모바일에서 접혀 있던 목록도 안내 중에는 펼쳐 보여주고 안내 후 일반 조작을 복원한다', () => {
+  const { rerender } = renderPanel()
+  fireEvent.keyDown(screen.getByRole('slider', { name: '목록 높이' }), { key: 'Home' })
+  expect(screen.queryByRole('button', { name: '상세 보기' })).not.toBeInTheDocument()
+  rerender(<HousingResultsPanel title="단지 목록" visible collapsible={false} onCollapse={() => {}}>
+    <button>상세 보기</button>
+  </HousingResultsPanel>)
+  expect(screen.getByRole('button', { name: '상세 보기' })).toBeVisible()
+  expect(screen.getByRole('complementary')).toHaveAttribute('data-snap', '1')
+  rerender(<HousingResultsPanel title="단지 목록" visible onCollapse={() => {}}>
+    <button>상세 보기</button>
+  </HousingResultsPanel>)
+  fireEvent.click(screen.getByRole('button', { name: '목록 펼치기' }))
+  expect(screen.getByRole('button', { name: '상세 보기' })).toBeVisible()
+  expect(screen.getByRole('slider', { name: '목록 높이' })).toHaveAttribute('aria-valuetext', '절반 펼침')
+})
+
 it('손잡이를 위로 쓸어 크게 펼치고 길게 아래로 끌면 접힌 높이로 이동한다', () => {
   renderPanel()
   const handle = screen.getByRole('slider', { name: '목록 높이' })
